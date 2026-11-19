@@ -2,6 +2,10 @@
 
 [English](README.md) | **中文**
 
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/yunjianmanbu/pilot-link?color=blue)](https://github.com/yunjianmanbu/pilot-link/releases)
+[![Discussions](https://img.shields.io/badge/discussions-open-2ea44f.svg)](https://github.com/yunjianmanbu/pilot/discussions)
+
 **官网与下载：** <https://pilot.medpilot.cc/zh.html#app-download> —— 截图、演示视频与各平台安装包。
 
 Pilot Link 是 [Pilot](https://github.com/yunjianmanbu/pilot) 的手机端：连接电脑上运行的 Pilot，
@@ -18,7 +22,7 @@ Pilot Link 是 [Pilot](https://github.com/yunjianmanbu/pilot) 的手机端：连
 
 > **用途边界：** 只能用于你拥有、或已获得设备所有者明确授权的设备。在对方不知情时监控屏幕 / 通知 / 短信 / 定位
 > 不属于支持的用法；禁止用途、滥用举报（`[ABUSE]`）与部署方自查清单见
-> [`RESPONSIBLE_USE.md`](RESPONSIBLE_USE.md)。
+> [`RESPONSIBLE_USE.md`](../community/RESPONSIBLE_USE.md)。
 
 ## 功能
 
