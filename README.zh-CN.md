@@ -2,6 +2,8 @@
 
 [English](README.md) | **中文**
 
+**官网与下载：** <https://pilot.medpilot.cc/zh.html#app-download> —— 截图、演示视频与各平台安装包。
+
 Pilot Link 是 [Pilot](https://github.com/yunjianmanbu/pilot) 的手机端：连接电脑上运行的 Pilot，
 在手机上读会话、继续对话、审批工具调用、管理队列与定时任务、预览会话写入的文件。
 独立 Android App（uni-app，同一套源码也可以编译 H5），不是任何对话控制台的换皮版本 ——
