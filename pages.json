@@ -1,0 +1,199 @@
+{
+  "pages": [
+    {
+      "path": "pages/launch/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/pair/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/sessions/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/chat/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/knowledge/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/settings/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/files/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/file/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/select/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/evolution/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/update/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/feedback/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/module-check/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/self-check/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/learning/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/connect-phone/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/manual/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "Pilot Link",
+    "navigationBarBackgroundColor": "#000000",
+    "backgroundColor": "#000000",
+    "backgroundColorTop": "#000000",
+    "backgroundColorBottom": "#000000"
+  }
+}
