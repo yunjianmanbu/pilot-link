@@ -1,0 +1,47 @@
+Pilot
+本地优先的自主学习型智能体（桌面客户端含 CLI 与 Web 控制台 / 被控端 Android App / 手机反控端 / 中继器）
+Copyright 2026 rigongyizu
+
+本项目除第三方组件外，均以 Apache License 2.0 授权，全文见同目录 LICENSE。
+Apache-2.0 第 6 条不授予商标权：Pilot、Pilot Link 的名称与 Logo 不包含在代码许可内，
+修改版分发时不得暗示与原项目的官方关联。
+
+适用范围
+========
+
+LICENSE 对以下四个子项目生效，各自发布为独立仓库；没有任何一个组件采用不同协议，也不存在双授权：
+
+  client/         客户端：Electron 桌面端（含内置 CLI 与 CLI 的 Web 控制台）
+  app/            被控端：uni-app Android 手机端
+  mobile-client/  控制端：Pilot Client 手机反控端
+  relay/          中继器（云端盲转发，与客户端完全相同的 Apache-2.0）
+
+site/（官网与下载清单）不开源：不建仓库，也不进公开源码包。scripts/、docs/、examples/ 不单独
+建仓，但随源码包 Pilot-source-<version>.tar.gz 一起分发；拆仓时复制进各新仓库的脚本副本
+随所在仓库一并以 Apache-2.0 提供。
+
+自建或商业托管中继无需额外授权、无需公开改造后的源码，只需保留本 NOTICE。
+
+第三方组件
+==========
+
+本项目直接依赖的运行时与构建组件协议如下（均与本项目 Apache-2.0 兼容）：
+
+  MIT
+    react, react-dom, react-markdown, remark-gfm        桌面端 UI
+    qrcode                                              桌面端扫码
+    ws                                                  桌面端 / 中继 WebSocket
+    @noble/ciphers, @noble/curves, @noble/hashes        手机端加密
+    electron, electron-vite, electron-builder, vite, vitest   构建与测试
+
+  Apache-2.0
+    typescript
+
+间接依赖以各包自带的 LICENSE 文件为准（client/node_modules、app/node_modules、
+relay/node_modules）。桌面安装包内已随包分发机器可读的完整许可文本：
+
+  release/win-unpacked/LICENSES.chromium.html   Chromium 及其依赖
+  release/win-unpacked/LICENSE.electron.txt     Electron
+
+client/companion/vendor/noble/ 为 @noble 系列依赖的内联副本，版权归其原作者，
+仍按其 MIT 协议使用。

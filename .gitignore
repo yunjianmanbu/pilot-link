@@ -3,3 +3,31 @@ unpackage/
 dist/
 .DS_Store
 *.log
+
+# 视频与录屏不入库
+*.mp4
+*.webm
+*.mov
+*.mkv
+*.avi
+
+# 本地依赖与构建产物
+node_modules/
+dist/
+out/
+release/
+coverage/
+*.tsbuildinfo
+*.log
+.DS_Store
+
+# 凭据与签名材料：新仓库是公开的，误提交一次就等于公开一次
+.env
+.env.*
+*.pem
+*.key
+*.jks
+*.keystore
+*.p12
+*.pfx
+keystore-password.txt

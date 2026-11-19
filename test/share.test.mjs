@@ -19,7 +19,7 @@ import {
   shareText,
   shareTimeLabel
 } from '../lib/share.js'
-import { ensureShareFeature, SHARE_FEATURE_ENTRY } from '../../scripts/android-share-feature.mjs'
+import { ensureShareFeature, SHARE_FEATURE_ENTRY } from '../scripts/android-share-feature.mjs'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 

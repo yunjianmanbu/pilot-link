@@ -162,12 +162,12 @@ the SDK can ship as a uni-app resource package instead of a full APK:
 
 ## Security
 
-Report vulnerabilities privately — see [SECURITY.md](../SECURITY.md). Messages are end-to-end encrypted;
+Report vulnerabilities privately — see [SECURITY.md](SECURITY.md). Messages are end-to-end encrypted;
 the connector never sees plaintext, session content or keys.
 
 ## License
 
-[Apache License 2.0](../LICENSE), copyright 2026 rigongyizu. Keep the copyright notice and the
-[`NOTICE`](../NOTICE) file, and state the changes in files you modified.
+[Apache License 2.0](LICENSE), copyright 2026 rigongyizu. Keep the copyright notice and the
+[`NOTICE`](NOTICE) file, and state the changes in files you modified.
 
-Third-party components (@noble, uni-app, ...) are listed in [`NOTICE`](../NOTICE).
+Third-party components (@noble, uni-app, ...) are listed in [`NOTICE`](NOTICE).
