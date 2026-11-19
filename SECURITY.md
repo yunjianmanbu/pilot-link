@@ -18,7 +18,7 @@ Pilot 会在用户机器上执行命令、读写文件、连手机、访问模�
 ## 怎么报
 
 - **优先**：GitHub Security Advisories 的私密报告（仓库页 Security → Report a vulnerability）
-- 备选：邮件 `embeddedmeng@163.com`，标题加 `[SECURITY]`
+- 备选：邮件 `yunjianmanbu@126.com`，标题加 `[SECURITY]`
 - 请**不要**开公开 issue、不要在公开渠道贴复现细节或利用代码
 
 为了更快定位，请附上：

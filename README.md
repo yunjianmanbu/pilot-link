@@ -2,9 +2,11 @@
 
 **English** | [中文](README.zh-CN.md)
 
-[![CI](https://github.com/yunjianmanbu/pilot-link/actions/workflows/ci.yml/badge.svg)](https://github.com/yunjianmanbu/pilot-link/actions/workflows/ci.yml)
+
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/yunjianmanbu/pilot-link?color=blue)](https://github.com/yunjianmanbu/pilot-link/releases)
 [![Discussions](https://img.shields.io/badge/discussions-open-2ea44f.svg)](https://github.com/yunjianmanbu/pilot/discussions)
+
 
 Pilot Link is the phone side of [Pilot](https://github.com/yunjianmanbu/pilot): an Android app
 (uni-app; the same sources also build for H5) that connects to Pilot running on your computer, so you
@@ -99,7 +101,10 @@ App.vue                 app entry, theme variables
 main.js                 Vue 3 entry
 manifest.json           uni-app config (app id, package name, icons, permissions)
 pages.json              page routes
-index.html              H5 template
+index.html              H5 template (PWA install metadata)
+pwa/
+  manifest.webmanifest  H5/PWA app manifest (name, icons, display)
+  sw.js                 Service Worker: network-first shell, cache-first static assets
 lib/
   bytes.js              base64url / UTF-8 / randomness
   e2e.js                end-to-end crypto compatible with pilot/client src/main/companion/crypto.ts
@@ -107,6 +112,7 @@ lib/
   storage.js            multiple computers, theme, per-device caches
   client.js             WebSocket connector client (heartbeat, reconnect, sequence, encryption)
   files.js              file type detection, chunked read, local persistence
+  platform.js           native-runtime / browser detection (gates background keep-alive, file cache)
   file-cache.js         download cache: expiry, renewal, launch sweep
   clipboard.js          copy and select-copy
   format.js             time, tool-call summaries, execution-mode labels
@@ -138,12 +144,80 @@ Regenerate icons:
 node scripts/gen-icons.mjs
 ```
 
+## H5 / PWA
+
+The same sources compiled for H5 give you an installable PWA: open the site in a mobile browser,
+use *Add to Home Screen*, and it runs in its own window and still opens the last loaded shell when
+offline.
+
+After an H5 build you must run the asset script once — HBuilderX copies `static/` and the built
+`assets/` only, it never moves `pwa/` to the site root, and a Service Worker only gets whole-site
+scope when it is served from the root:
+
+```bash
+node pilot/scripts/prepare-app-web.mjs            # copy files + self-check
+node pilot/scripts/prepare-app-web.mjs --check    # self-check only (CI: exit 1 when it fails)
+node pilot/scripts/prepare-app-web.mjs --dir <h5 build dir>
+```
+
+It does four things:
+
+1. copies `pwa/manifest.webmanifest` and `pwa/sw.js` to the build root;
+2. writes the real build output listing (`assets/`, `static/`, filenames carry a content hash) into
+   `ASSET_PRECACHE` inside `sw.js`, so the very first visit pre-caches the whole site;
+3. rewrites leftover absolute `/assets/…`, `/static/…` references in `index.html` to `./assets/…`,
+   so one build works both at the domain root and under a `/app/` sub-path;
+4. checks that `index.html` references the manifest and a theme-color, and that every icon in the
+   manifest exists with the declared PNG size.
+
+Step 2 is not optional. On the first visit the page's script requests fire before the Service Worker
+controls anything; without a pre-cache list, an offline reload gets `index.html` but no
+`assets/index-*.js` and renders a blank page (measured on macOS Edge, 2026-11-19). By the same
+reason, **re-run the script after every H5 build**: new output means new hashed filenames, and a
+stale list leaves the cache empty — `--check` returns 1 for exactly that case.
+
+`h5.router.base` in `manifest.json` is `./` so the runtime also loads lazy chunks relatively;
+without it a sub-path deployment serves the first screen but sends every later `assets/` request to
+the site root.
+
+Deployment needs **HTTPS**. Browsers disable Service Workers over plain HTTP (including LAN IPs);
+the page still works there, it just has no offline or install support — the registration helper in
+`main.js` returns early outside a secure context instead of logging errors.
+
+Where the web build differs from the Android app:
+
+| Capability | Android app | Web / PWA |
+| --- | --- | --- |
+| Background keep-alive | foreground service + wake lock | browser-managed, may be suspended, reconnects on return |
+| Saving files | app-private directory plus cache | Blob download into the browser's downloads, no app cache |
+| System share | `plus.share` | `navigator.share`, clipboard fallback |
+| HTML preview | isolated WebView | download only, never executed (pairing secrets live on this origin) |
+| Updates | download wgt / APK | reload the page for the latest version |
+
+The settings page branches on `lib/platform.js`: in a browser it hides native-only entries
+(background keep-alive, download cache) and shows the matching explanation and reload button instead.
+
 ## Packaging for Android
 
 Two routes, both documented in detail by uni-app: **cloud packaging** in HBuilderX (needs an account
 and the app's certificate) or **offline packaging** with the Android SDK and this repository's native
 shell under `native/`. Offline packaging needs the Gradle project, the offline SDK and
 `zip4j` (without it the APK installs but in-app hot updates fail).
+
+DCloud validates an offline appkey against **appid + package name + certificate SHA1** together and
+reports nothing but "AppKey not configured or misconfigured" when any of them differs. The controller
+app's triple is `__UNI__71B4F08` / `cc.medpilot.pilot` / the `pilot` alias in the local
+`android-keystore.jks`. After re-applying an appkey or changing the certificate, edit `APP_KEY` in
+`pilot/scripts/prepare-app-android.mjs` only and let the script write the offline project:
+
+```bash
+node pilot/scripts/prepare-app-android.mjs --check   # verify appid / package / appkey / permissions, exit 1 on drift
+node pilot/scripts/prepare-app-android.mjs           # write those constants into the offline project
+```
+
+The script deliberately leaves `versionCode` / `versionName` in `build.gradle` and `appver` in
+`dcloud_control.xml` alone: they are the **shell version**, changed only for a full APK release,
+while a wgt release only bumps `manifest.json`.
 
 Every release:
 

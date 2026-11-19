@@ -76,7 +76,10 @@ App.vue                 # 应用入口、主题变量
 main.js                 # Vue 3 入口
 manifest.json           # uni-app 配置（AppID、包名、图标、权限）
 pages.json              # 页面路由
-index.html              # H5 模板
+index.html              # H5 模板（含 PWA 安装元信息）
+pwa/
+  manifest.webmanifest # H5/PWA 应用清单（名称、图标、display）
+  sw.js                 # Service Worker：壳 network-first、静态资源 cache-first
 lib/
   bytes.js              # base64url / UTF-8 / 随机数
   e2e.js                # 与电脑端 companion 一致的端到端加密
@@ -84,6 +87,7 @@ lib/
   storage.js            # 多电脑配对、主题、按设备隔离的缓存
   client.js             # WebSocket 连接器客户端（心跳、重连、序号、加密）
   files.js              # 文件类型识别、分块读取与本地落盘
+  platform.js           # 原生运行时 / 浏览器判定（后台保活、文件缓存等入口按此分支）
   file-cache.js         # 下载文件缓存：过期、续期、启动清扫
   clipboard.js          # 复制与选择复制
   format.js             # 时间、工具调用摘要、执行模式文案
@@ -115,11 +119,75 @@ H5 调试：在 HBuilderX 里打开本目录，运行 → 运行到浏览器；�
 node scripts/gen-icons.mjs
 ```
 
+## H5 / PWA
+
+同一套源码编成 H5 后就是一个可安装的 PWA：在手机浏览器里打开站点，
+「添加到主屏幕」后以独立窗口运行，断网也能打开上次加载的壳。
+
+H5 构建之后必须跑一次铺文件脚本 —— HBuilderX 只搬运 `static/` 与构建出的
+`assets/`，不会把 `pwa/` 带到站点根目录，而 Service Worker 只有放在站点根
+才能拿到整站作用域：
+
+```bash
+node pilot/scripts/prepare-app-web.mjs            # 铺文件 + 自检
+node pilot/scripts/prepare-app-web.mjs --check    # 只自检（CI 用，退出码 1 表示不合格）
+node pilot/scripts/prepare-app-web.mjs --dir <H5 构建目录>
+```
+
+它做四件事：
+
+1. 复制 `pwa/manifest.webmanifest` 与 `pwa/sw.js` 到构建目录根；
+2. 把构建产物里 `assets/`、`static/` 的实际文件清单（文件名带内容哈希）写进
+   `sw.js` 的 `ASSET_PRECACHE`，首访就整站预缓存；
+3. 把 `index.html` 里残留的绝对路径 `/assets/…`、`/static/…` 改成 `./assets/…`，
+   同一份产物挂在域名根和 `/app/` 子路径下都能用；
+4. 校验 `index.html` 真挂了 manifest 与 theme-color、逐个核对 manifest 里的图标
+   存在且 PNG 尺寸与声明一致。
+
+第 2 步不能省。首访时页面发出的脚本请求早于 Service Worker 接管，不预缓存的话
+断网刷新只能拿到 `index.html`、拿不到 `assets/index-*.js`，页面就是一片空白
+（2026-11-19 在 macOS Edge 上实测到的就是这个）。同理，**重新构建 H5 后必须
+重跑一次脚本**：新产物的文件名哈希变了，旧清单会让整站缓存落空，`--check`
+会为此返回 1。
+
+`manifest.json` 里的 `h5.router.base` 设为 `./`，让运行时按相对路径加载懒加载
+分块；少了它，子路径部署时首屏能开、换页时所有 `assets/` 请求都打到站点根。
+
+部署要求：**必须 HTTPS**。Service Worker 在 HTTP（含局域网 IP）下被浏览器禁用，
+此时页面本身仍可用，只是没有离线与安装能力 —— `main.js` 里的注册函数会在非安全
+上下文直接跳过，不会往控制台刷报错。
+
+网页版与 App 端的能力差异：
+
+| 能力 | App（Android） | 网页版 / PWA |
+| --- | --- | --- |
+| 后台保活 | 前台服务 + 唤醒锁 | 浏览器托管，切后台可能被挂起，回前台自动重连 |
+| 文件保存 | 写入 App 私有目录并缓存 | Blob 下载到浏览器下载目录，不占 App 缓存 |
+| 系统分享 | `plus.share` | `navigator.share`，不支持时退回剪贴板 |
+| HTML 预览 | 隔离 WebView | 只下载不执行（站点源下有配对凭证） |
+| 应用更新 | 下载 wgt / APK 安装 | 刷新页面即得最新版 |
+
+设置页用 `lib/platform.js` 判定运行方式：网页版隐藏「后台保持」「文件缓存」这些
+原生专属入口，换成对应的说明与刷新按钮。
+
 ## 打包 Android
 
 两条路：HBuilderX **云打包**（需要账号与本应用的证书），或者用 Android SDK 加本仓库 `native/`
 下的原生壳做**本地离线打包**。离线打包需要 Gradle 工程、离线 SDK 与 `zip4j` ——
 缺了它 APK 能装但 App 内热更会失败。
+
+DCloud 离线 appkey 校验 **appid + 包名 + 证书 SHA1** 三者同时匹配，任一不符只报
+「未配置AppKey或配置错误」。控制端的三元组是 `__UNI__71B4F08` / `cc.medpilot.pilot` /
+本机 `android-keystore.jks` 里 `pilot` 别名的证书；换证书或重新申请 appkey 后，改
+`pilot/scripts/prepare-app-android.mjs` 里的 `APP_KEY` 一处即可，别手改 `.build/`。
+
+```bash
+node pilot/scripts/prepare-app-android.mjs --check   # 只校验 appid / 包名 / appkey / 权限，不一致退出 1
+node pilot/scripts/prepare-app-android.mjs           # 把上面的常量写进离线工程
+```
+
+脚本刻意不改 `build.gradle` 的 `versionCode` / `versionName` 与 `dcloud_control.xml` 的
+`appver`：那是**壳版本**，只在发全量 APK 时改；发 wgt 只动 `manifest.json`。
 
 每次发版：
 
@@ -137,6 +205,18 @@ node scripts/gen-icons.mjs
   本地记录兜底，避免重复提示同一个更新；
 - 客户端把 `wgt` 当可选字段：缺失或域名不对时只丢弃该字段，照旧提示全量更新；
 - 从来没发过 wgt 的旧壳必须先换全量 APK。
+
+出包（仓库根目录）：
+
+```bash
+"/d/soft/HBuilderX.4.24.2024072208/HBuilderX/cli.exe" publish app-android --type appResource --project "E:/code/agent/manbu-agent-workspace/pilot/app"
+node pilot/scripts/pack-app-wgt.mjs             # → pilot/release/android/Pilot-<versionName>.wgt
+node pilot/scripts/pack-app-wgt.mjs --json      # 只打印 latest.json 的 wgt 块
+```
+
+`pack-app-wgt.mjs` 的壳版本默认从 `.build/pilot-android/simpleDemo/build.gradle` 读；
+版本关系不合法（`versionName` ≤ 壳版本）直接退出 1。把打印的 wgt 块写进
+`pilot/release/android/latest.json`，再按下面的发版流程上传。
 
 ## 安全
 
