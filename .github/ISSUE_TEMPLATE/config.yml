@@ -1,7 +1,10 @@
 blank_issues_enabled: false
 contact_links:
+  - name: 提问与讨论（Discussions）
+    url: https://github.com/yunjianmanbu/pilot/discussions
+    about: 「怎么用」「为什么这样报错」「想要某个功能」先到主仓库 Discussions 提问；issue 只收能复现的 bug 与已想清楚的改动提案。
   - name: 安全问题（请勿公开）
-    url: https://github.com/
+    url: https://github.com/yunjianmanbu/pilot/security/policy
     about: 漏洞请走私密渠道，见 SECURITY.md，不要开公开 issue。
   - name: 使用与部署文档
     url: https://pilot.medpilot.cc

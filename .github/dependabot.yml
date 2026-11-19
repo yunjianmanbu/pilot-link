@@ -1,0 +1,39 @@
+# 依赖更新：每月检查一次，只提 PR 不自动合并。
+# 项目原则是不轻易加依赖（见 CONTRIBUTING.md），所以这里只做「已有依赖的补丁与安全修复」。
+# 语法见 https://docs.github.com/code-security/dependabot/dependabot-options-reference
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore(deps)'
+    groups:
+      npm-patch:
+        applies-to: version-updates
+        update-types:
+          - patch
+          - minor
+    ignore:
+      # 主版本升级一律人工评估：Electron / Vite 大版本会连带改构建链
+      - dependency-name: electron
+        update-types: ['version-update:semver-major']
+      - dependency-name: electron-builder
+        update-types: ['version-update:semver-major']
+      - dependency-name: electron-vite
+        update-types: ['version-update:semver-major']
+      - dependency-name: vite
+        update-types: ['version-update:semver-major']
+      - dependency-name: react
+        update-types: ['version-update:semver-major']
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: 'chore(ci)'

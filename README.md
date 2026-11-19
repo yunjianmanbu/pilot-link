@@ -2,6 +2,10 @@
 
 **English** | [中文](README.zh-CN.md)
 
+[![CI](https://github.com/yunjianmanbu/pilot-link/actions/workflows/ci.yml/badge.svg)](https://github.com/yunjianmanbu/pilot-link/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Discussions](https://img.shields.io/badge/discussions-open-2ea44f.svg)](https://github.com/yunjianmanbu/pilot/discussions)
+
 Pilot Link is the phone side of [Pilot](https://github.com/yunjianmanbu/pilot): an Android app
 (uni-app; the same sources also build for H5) that connects to Pilot running on your computer, so you
 can drive the agent from your phone — read sessions, continue conversations, approve tool calls,

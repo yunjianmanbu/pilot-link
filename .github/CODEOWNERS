@@ -1,0 +1,9 @@
+# 合并权限：默认全部路径归维护者，PR 会自动请求 review。
+# 语法见 https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+* @yunjianmanbu
+
+# 发布与签名相关的脚本、凭据忽略规则，改动必须由维护者本人确认。
+/.github/ @yunjianmanbu
+/scripts/ @yunjianmanbu
+/.gitignore @yunjianmanbu
+/SECURITY.md @yunjianmanbu
