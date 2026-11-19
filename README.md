@@ -16,6 +16,10 @@ manage the queue and scheduled work, and preview the files a session wrote.
 It is not a reskin of any chat console: the data layer implements Pilot's relay protocol and session
 model directly, while the UI keeps uni-app's interaction structure.
 
+| Pair with a QR code | Session list | Live run and approvals |
+| --- | --- | --- |
+| ![Pairing](docs/pair.jpg) | ![Sessions](docs/sessions.jpg) | ![Chat](docs/chat.jpg) |
+
 **There is no public relay run by the Pilot project.** To reach your computer across networks, deploy
 the connector yourself: <https://github.com/yunjianmanbu/pilot-connector>. On the same LAN the app can
 connect directly.
