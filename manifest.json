@@ -1,87 +1,94 @@
 {
-    "name" : "Pilot Link",
-    "appid" : "__UNI__71B4F08",
-    "description" : "Pilot Link：手机端连接你电脑上的 Pilot 智能体，查看会话、继续对话、审批工具调用。消息端到端加密。",
-    "versionName" : "1.0.98",
-    "versionCode" : "140",
-    "transformPx" : false,
-    "app-plus" : {
-        "usingComponents" : true,
-        "nvueStyleCompiler" : "uni-app",
-        "compilerVersion" : 3,
-        "darkmode" : true,
-        "compatible" : {
-            "ignoreVersion" : true
-        },
-        "splashscreen" : {
-            "alwaysShowBeforeRender" : true,
-            "waiting" : true,
-            "autoclose" : true,
-            "delay" : 0
-        },
-        "modules" : {
-            "Barcode" : {},
-            "Share" : {}
-        },
-        "distribute" : {
-            "android" : {
-                "packagename" : "cc.medpilot.pilot",
-                "permissions" : [
-                    "<uses-permission android:name=\"android.permission.INTERNET\"/>",
-                    "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
-                    "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\"/>",
-                    "<uses-permission android:name=\"android.permission.CAMERA\"/>",
-                    "<uses-feature android:name=\"android.hardware.camera\"/>",
-                    "<uses-feature android:name=\"android.hardware.camera.autofocus\"/>",
-                    "<uses-permission android:name=\"android.permission.VIBRATE\"/>",
-                    "<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>",
-                    "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE\"/>",
-                    "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE_DATA_SYNC\"/>",
-                    "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE_SPECIAL_USE\"/>",
-                    "<uses-permission android:name=\"android.permission.POST_NOTIFICATIONS\"/>",
-                    "<uses-permission android:name=\"android.permission.CHANGE_WIFI_STATE\"/>",
-                    "<uses-permission android:name=\"android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS\"/>",
-                    "<uses-permission android:name=\"android.permission.REQUEST_INSTALL_PACKAGES\"/>"
-                ],
-                "minSdkVersion" : 23,
-                "targetSdkVersion" : 35,
-                "abiFilters" : [ "armeabi-v7a", "arm64-v8a" ]
-            },
-            "ios" : {
-                "deviceType" : [ "iphone", "ipad" ],
-                "dSYMs" : false,
-                "privacyDescription" : {
-                    "NSCameraUsageDescription" : "用于扫描电脑上的配对二维码。"
-                }
-            },
-            "icons" : {
-                "android" : {
-                    "mdpi" : "static/icons/48.png",
-                    "hdpi" : "static/icons/72.png",
-                    "xhdpi" : "static/icons/96.png",
-                    "xxhdpi" : "static/icons/144.png",
-                    "xxxhdpi" : "static/icons/192.png"
-                }
-            },
-            "sdkConfigs" : {}
-        },
-        "safearea" : {
-            "background" : "#000000",
-            "bottom" : {
-                "offset" : "none"
-            }
-        }
+  "name": "Pilot Link",
+  "appid": "__UNI__71B4F08",
+  "description": "Pilot Link：手机端连接你电脑上的 Pilot 智能体，查看会话、继续对话、审批工具调用。消息端到端加密。",
+  "versionName": "1.1.0",
+  "versionCode": "141",
+  "transformPx": false,
+  "app-plus": {
+    "usingComponents": true,
+    "nvueStyleCompiler": "uni-app",
+    "compilerVersion": 3,
+    "darkmode": true,
+    "compatible": {
+      "ignoreVersion": true
     },
-    "quickapp" : {},
-    "mp-weixin" : {},
-    "h5" : {
-        "title" : "Pilot Link",
-        "router" : {
-            "mode" : "hash"
-        }
+    "splashscreen": {
+      "alwaysShowBeforeRender": true,
+      "waiting": true,
+      "autoclose": true,
+      "delay": 0
     },
-    "vueVersion" : "3",
-    "uniStatistics" : {
-        "enable" : false
+    "modules": {
+      "Barcode": {},
+      "Share": {}
+    },
+    "distribute": {
+      "android": {
+        "packagename": "cc.medpilot.pilot",
+        "permissions": [
+          "<uses-permission android:name=\"android.permission.INTERNET\"/>",
+          "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
+          "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\"/>",
+          "<uses-permission android:name=\"android.permission.CAMERA\"/>",
+          "<uses-feature android:name=\"android.hardware.camera\"/>",
+          "<uses-feature android:name=\"android.hardware.camera.autofocus\"/>",
+          "<uses-permission android:name=\"android.permission.VIBRATE\"/>",
+          "<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>",
+          "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE\"/>",
+          "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE_DATA_SYNC\"/>",
+          "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE_SPECIAL_USE\"/>",
+          "<uses-permission android:name=\"android.permission.POST_NOTIFICATIONS\"/>",
+          "<uses-permission android:name=\"android.permission.CHANGE_WIFI_STATE\"/>",
+          "<uses-permission android:name=\"android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS\"/>",
+          "<uses-permission android:name=\"android.permission.REQUEST_INSTALL_PACKAGES\"/>"
+        ],
+        "minSdkVersion": 23,
+        "targetSdkVersion": 35,
+        "abiFilters": [
+          "armeabi-v7a",
+          "arm64-v8a"
+        ]
+      },
+      "ios": {
+        "deviceType": [
+          "iphone",
+          "ipad"
+        ],
+        "dSYMs": false,
+        "privacyDescription": {
+          "NSCameraUsageDescription": "用于扫描电脑上的配对二维码。"
+        }
+      },
+      "icons": {
+        "android": {
+          "mdpi": "static/icons/48.png",
+          "hdpi": "static/icons/72.png",
+          "xhdpi": "static/icons/96.png",
+          "xxhdpi": "static/icons/144.png",
+          "xxxhdpi": "static/icons/192.png"
+        }
+      },
+      "sdkConfigs": {}
+    },
+    "safearea": {
+      "background": "#000000",
+      "bottom": {
+        "offset": "none"
+      }
     }
+  },
+  "quickapp": {},
+  "mp-weixin": {},
+  "h5": {
+    "title": "Pilot Link",
+    "router": {
+      "mode": "hash",
+      "base": "./"
+    }
+  },
+  "vueVersion": "3",
+  "uniStatistics": {
+    "enable": false
+  }
 }

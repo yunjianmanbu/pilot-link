@@ -31,12 +31,44 @@ for (const [name, size] of [
   ['72.png', 72],
   ['96.png', 96],
   ['144.png', 144],
+  ['180.png', 180],
   ['192.png', 192],
+  ['512.png', 512],
   ['1024.png', 1024]
 ]) {
   writeFileSync(resolve(iconDir, name), renderIcon(size, APP_ICON_PALETTE))
   process.stdout.write(`icons/${name}\n`)
 }
+
+/**
+ * maskable 图标：满幅底色、没有任何圆角透明区，主体缩到 68% 居中 ——
+ * 安卓自适应图标会把外沿裁掉，字形贴着边就被切掉了。
+ */
+function renderMaskable(size = 512) {
+  const rgba = Buffer.alloc(size * size * 4)
+  const [br, bg, bb] = APP_ICON_PALETTE.background
+  const scale = 64 / size
+  const glyphScale = 0.68
+  for (let py = 0; py < size; py++) {
+    for (let px = 0; px < size; px++) {
+      // 把像素坐标以中心为原点缩回 64 坐标系，再交给品牌字形采样。
+      const gx = ((px + 0.5) * scale - 32) / glyphScale + 32
+      const gy = ((py + 0.5) * scale - 32) / glyphScale + 32
+      const color = sample(gx, gy, APP_ICON_PALETTE)
+      const index = (py * size + px) * 4
+      // sample 在圆角外返回 null，maskable 需要满幅底色，所以退回背景色。
+      const [r, g, b] = color || APP_ICON_PALETTE.background
+      rgba[index] = r ?? br
+      rgba[index + 1] = g ?? bg
+      rgba[index + 2] = b ?? bb
+      rgba[index + 3] = 255
+    }
+  }
+  return encodePng(size, size, rgba)
+}
+
+writeFileSync(resolve(iconDir, 'maskable-512.png'), renderMaskable(512))
+process.stdout.write('icons/maskable-512.png\n')
 
 // 启动图：保持旧 splash.9.png 的 9-patch 结构（顶部/左侧两侧为可拉伸区，
 // 中间 97..288 固定），背景 #0f1115，Pilot 图标居中。

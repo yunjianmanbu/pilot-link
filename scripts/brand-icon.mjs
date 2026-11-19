@@ -187,7 +187,8 @@ export function sample(x, y, palette = {}) {
   return [...background, 1]
 }
 
-export function renderIcon(size, palette) {
+/** 渲染成未压缩的 RGBA 像素（给需要做合成的调用方，如启动图）。 */
+export function renderIconPixels(size, palette) {
   const rgba = Buffer.alloc(size * size * 4)
   const scale = 64 / size
   for (let py = 0; py < size; py++) {
@@ -217,7 +218,12 @@ export function renderIcon(size, palette) {
       rgba[index + 3] = Math.round((sa / (SS * SS)) * 255)
     }
   }
-  return encodePng(size, size, rgba)
+  return rgba
+}
+
+/** 渲染成 PNG（尺寸 = 边长，圆角外透明）。 */
+export function renderIcon(size, palette) {
+  return encodePng(size, size, renderIconPixels(size, palette))
 }
 
 /** 把多张 PNG 打包成 ICO（Vista+ 的 PNG 条目）。 */

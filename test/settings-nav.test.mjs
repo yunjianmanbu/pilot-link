@@ -28,7 +28,8 @@ const expectedCards = {
   'settings-help': 2
 }
 
-const cardMatches = [...source.matchAll(/<view v-if="activeSection === '([^']+)'"/g)]
+// 卡片可以由运行时条件再收窄（例如网页版没有「文件缓存」），分组只看 activeSection。
+const cardMatches = [...source.matchAll(/<view v-if="activeSection === '([^']+)'[^"]*"/g)]
 const dialogStart = source.indexOf('<app-dialog')
 
 /** 按分区取出对应的卡片模板块，便于核对卡片有没有放错区。 */
@@ -148,4 +149,51 @@ test('设置目录标签有英文翻译', () => {
   assert.ok(locale.includes('"更新": "Updates"'))
   assert.ok(locale.includes('"功能": "Features"'))
   assert.ok(locale.includes('"帮助": "Help"'))
+})
+
+/**
+ * 网页版（H5 / PWA）没有 plus 运行时：后台保活、本地文件缓存、APK 更新全都做不了，
+ * 这些入口必须收起来或换说法，否则用户点下去只会拿到「当前环境不支持」。
+ */
+test('网页版设置页收起原生专属入口', () => {
+  const connection = sectionBlocks('settings-connection')
+  assert.ok(connection.includes('v-if="webRuntime"'), '连接分区没有网页版分支')
+  assert.ok(connection.includes('网页版的连接由浏览器托管'), '缺少网页版的连接说明')
+  assert.ok(
+    connection.includes('v-else') && connection.includes('后台保持'),
+    '原生的后台保活内容应落在网页版分支之外'
+  )
+
+  const fileCache = source.slice(
+    source.indexOf("id=\"settings-file-cache\"") - 200,
+    source.indexOf("id=\"settings-file-cache\"")
+  )
+  assert.ok(fileCache.includes('!webRuntime'), '文件缓存卡片没有在网页版隐藏')
+
+  const update = sectionBlocks('settings-update')
+  assert.ok(update.includes('网页版随服务器更新'), '关于分区没有网页版更新说明')
+  assert.ok(update.includes('reloadWebApp'), '网页版没有刷新入口')
+  assert.ok(source.includes('isWebRuntime()'), '没有接上 lib/platform.js 的判定')
+})
+
+test('platform.js 能区分原生运行时与浏览器', async () => {
+  const { hasNativeRuntime, isWebRuntime, runtimeLabel } = await import('../lib/platform.js')
+  const browser = { document: {}, plus: undefined }
+  const native = { document: {}, plus: { runtime: { version: '1.0.94' } } }
+
+  assert.equal(hasNativeRuntime(native), true)
+  assert.equal(isWebRuntime(native), false)
+  assert.equal(hasNativeRuntime(browser), false)
+  assert.equal(isWebRuntime(browser), true)
+  assert.equal(runtimeLabel(browser), '网页版')
+  assert.equal(runtimeLabel(native), '')
+  // 基座里读 plus 属性本身也能抛错，这种情况按「没有原生能力」处理，不能崩。
+  const hostile = {
+    document: {},
+    get plus() {
+      throw new Error('打包时未加入模块')
+    }
+  }
+  assert.equal(hasNativeRuntime(hostile), false)
+  assert.equal(isWebRuntime(hostile), true)
 })

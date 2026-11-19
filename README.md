@@ -2,6 +2,7 @@
 
 **English** | [中文](README.zh-CN.md)
 
+[![CI](https://github.com/yunjianmanbu/pilot-link/actions/workflows/ci.yml/badge.svg)](https://github.com/yunjianmanbu/pilot-link/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/yunjianmanbu/pilot-link?color=blue)](https://github.com/yunjianmanbu/pilot-link/releases)
 [![Discussions](https://img.shields.io/badge/discussions-open-2ea44f.svg)](https://github.com/yunjianmanbu/pilot/discussions)
@@ -23,6 +24,11 @@ model directly, while the UI keeps uni-app's interaction structure.
 **There is no public relay run by the Pilot project.** To reach your computer across networks, deploy
 the connector yourself: <https://github.com/yunjianmanbu/pilot-connector>. On the same LAN the app can
 connect directly.
+
+> **Authorized devices only.** Use Pilot Link on computers you own or are explicitly allowed to control.
+> Covert monitoring of another person's screen, notifications, SMS or location is out of scope;
+> prohibited uses, the `[ABUSE]` reporting channel and the operator checklist are in
+> [`RESPONSIBLE_USE.md`](RESPONSIBLE_USE.md).
 
 ## Features
 

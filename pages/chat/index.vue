@@ -478,11 +478,7 @@
         </view>
         <view v-for="task in scheduledTasks" :key="task.id" class="todo-item schedule-item">
           <text class="todo-text">{{ task.content }}</text>
-          <text class="schedule-meta">
-            {{ scheduleLabel(task) }}
-            · {{ task.enabled ? `下次 ${scheduleTimeText(task.nextRunAt)}` : t('已暂停') }}
-          </text>
-          <view class="todo-actions">
+          <view class="todo-actions schedule-actions">
             <text class="todo-action" @click="toggleSchedule(task)">
               {{ task.enabled ? t('暂停') : t('启用') }}
             </text>
@@ -490,6 +486,10 @@
             <text class="todo-action" @click="scheduleToTodo(task)">{{ t('转待办') }}</text>
             <text class="todo-action" @click="removeSchedule(task)">{{ t('删除') }}</text>
           </view>
+          <text class="schedule-meta">
+            {{ scheduleLabel(task) }}
+            · {{ task.enabled ? `下次 ${scheduleTimeText(task.nextRunAt)}` : t('已暂停') }}
+          </text>
         </view>
         <view v-if="!scheduledTasks.length && !scheduleFormOpen" class="schedule-empty">
           {{ t('还没有定时任务。电脑端关闭时不会触发。') }}
@@ -3642,9 +3642,24 @@ export default {
   color: var(--text);
   font-size: calc(23rpx * var(--font-scale));
 }
+.schedule-item {
+  /* 任务内容独占一行，操作按钮在下方，时间与下次时间再放到按钮下面 */
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8rpx;
+}
+.schedule-item .todo-text {
+  flex: none;
+  width: 100%;
+}
+.schedule-actions {
+  justify-content: flex-start;
+  gap: 24rpx;
+}
 .schedule-meta {
   color: var(--dim);
   font-size: calc(20rpx * var(--font-scale));
+  line-height: 1.5;
 }
 .schedule-empty {
   padding: 16rpx 4rpx;

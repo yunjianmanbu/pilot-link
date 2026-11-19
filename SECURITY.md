@@ -20,6 +20,8 @@ Pilot 会在用户机器上执行命令、读写文件、连手机、访问模�
 - **优先**：GitHub Security Advisories 的私密报告（仓库页 Security → Report a vulnerability）
 - 备选：邮件 `yunjianmanbu@126.com`，标题加 `[SECURITY]`
 - 请**不要**开公开 issue、不要在公开渠道贴复现细节或利用代码
+- **滥用（不是漏洞）**：有人在用本项目（含改过的版本）控制别人设备、群控或诈骗，标题加 `[ABUSE]`，
+  政策与我们的处置范围见 [`RESPONSIBLE_USE.md`](RESPONSIBLE_USE.md)；我们不会远程关停别人自建的中继或自编译客户端。
 
 为了更快定位，请附上：
 

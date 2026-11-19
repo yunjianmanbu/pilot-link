@@ -195,8 +195,7 @@ test('任务会话不再提供分享入口，应用分享只保留在设置页',
   assert.match(settings, /async shareApp\(/)
 })
 
-test('基座缺 Share 模块时当成不支持，不抛错也不落到 uni 包装', async () => {
-  let uniCalled = false
+test('基座缺 Share 模块时当成不支持，不抛错也不落到 uni 包装', async () => {  let uniCalled = false
   const result = await shareText('内容', {
     api: {
       plus: {
@@ -334,4 +333,67 @@ test('打包清单带 Share 模块，头部把次要入口收进更多气泡', (
     '「更多」还挂在 app-picker 底部弹层上'
   )
   assert.match(chat, /onMorePick\(index\)/)
+})
+
+/* ── 网页版（H5 / PWA）：navigator.share ─────────────────────────────── */
+
+test('网页版用 navigator.share 打开系统分享面板，并带上链接', async () => {
+  resetShareModuleState()
+  const calls = []
+  const result = await shareText('网页版内容', {
+    url: 'https://pilot.medpilot.cc/',
+    api: {
+      navigator: {
+        share(payload) {
+          calls.push(payload)
+          return Promise.resolve()
+        }
+      }
+    }
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.copied, false)
+  assert.deepEqual(calls, [{ text: '网页版内容', url: 'https://pilot.medpilot.cc/' }])
+})
+
+test('网页版用户取消分享时不写剪贴板', async () => {
+  resetShareModuleState()
+  let copied = false
+  const abort = Object.assign(new Error('share cancelled'), { name: 'AbortError' })
+  const result = await shareText('内容', {
+    api: { navigator: { share: () => Promise.reject(abort) } },
+    copy: async () => {
+      copied = true
+      return true
+    }
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.copied, false)
+  assert.equal(result.reason, 'cancelled')
+  assert.equal(copied, false, '用户取消后不应该偷偷改写剪贴板')
+})
+
+test('网页版分享失败时退回剪贴板', async () => {
+  resetShareModuleState()
+  const result = await shareText('内容', {
+    api: {
+      navigator: {
+        share: () => Promise.reject(new Error('NotAllowedError'))
+      }
+    },
+    copy: async () => true
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.copied, true)
+  assert.equal(result.reason, 'copied')
+})
+
+test('桌面浏览器没有 navigator.share 时直接走剪贴板', async () => {
+  resetShareModuleState()
+  const result = await shareText('内容', {
+    api: { navigator: {} },
+    copy: async () => true
+  })
+  assert.equal(result.copied, true)
+  assert.equal(result.reason, 'copied')
 })

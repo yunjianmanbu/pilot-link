@@ -48,6 +48,14 @@
         <text class="unread-summary-action">{{ t('查看') }} ›</text>
       </view>
 
+      <!-- 排队汇总：列表行内只看得到单个会话的队列，这里直接给全屏总数。
+           点一下切到「进行中」筛选，跳过去看那几个还排着队的会话。 -->
+      <view v-if="totalQueueCount > 0" class="queue-summary" @click="showQueued">
+        <view class="unread-summary-dot queue-summary-dot"></view>
+        <text class="queue-summary-count">{{ t('{v1} 个任务排队中', { v1: totalQueueCount }) }}</text>
+        <text class="queue-summary-action">{{ t('查看') }} ›</text>
+      </view>
+
       <view v-if="store.sessions.length > 0" class="filter-bar">
         <view
           v-if="filters.length > 1"
@@ -156,11 +164,13 @@
             <view class="session-main">
               <view class="session-title-row">
                 <text class="session-title">{{ session.title }}</text>
+                <!-- 状态徽标各自独立：正在执行时排队数量同样要显示，
+                     否则「跑着 1 个、还排着 2 个」这种情况在列表上完全看不出来。 -->
                 <text v-if="runningFor(session.id)" class="badge running-badge">{{ t('运行中') }}</text>
-                <text v-else-if="pendingFor(session.id)" class="badge queue-badge">{{ t('排队{v1}', { v1: pendingFor(session.id) }) }}</text>
-                <text v-else-if="session.paused" class="badge paused-badge">{{ t('已暂停') }}</text>
+                <text v-if="pendingFor(session.id) > 0" class="badge queue-badge">{{ t('排队{v1}', { v1: pendingFor(session.id) }) }}</text>
+                <text v-if="session.paused" class="badge paused-badge">{{ t('已暂停') }}</text>
                 <view
-                  v-else-if="unreadFor(session.id)"
+                  v-if="unreadFor(session.id)"
                   class="badge unread-badge"
                   :class="unreadFor(session.id) === 'failed' ? 'failed-badge' : 'done-badge'"
                 >
@@ -194,6 +204,17 @@
                 </text>
               </view>
               <text class="session-meta">{{ sessionMeta(session) }}</text>
+              <!-- 行内快捷入口：不打开会话，直接进这个任务的文件或知识库。 -->
+              <view class="session-links">
+                <text
+                  class="chip session-link file"
+                  @click.stop="openSessionFiles(session)"
+                >{{ t('文件') }}</text>
+                <text
+                  class="chip session-link knowledge"
+                  @click.stop="openSessionKnowledge(session)"
+                >{{ t('知识') }}</text>
+              </view>
             </view>
             <text class="chevron">›</text>
           </view>
@@ -856,6 +877,14 @@ export default {
       }
       return total
     },
+    /** 所有会话里排队的任务总数；口径与会话行徽标保持一致，都走 pendingFor。 */
+    totalQueueCount() {
+      let total = 0
+      for (const session of store.sessions) {
+        total += this.pendingFor(session.id)
+      }
+      return total
+    },
     todoSheetGroups() {
       const groups = []
       for (const entry of this.todoSheetRows) {
@@ -1004,6 +1033,11 @@ export default {
       this.runningOnly = !this.runningOnly
       this.filterMenuVisible = false
     },
+    /** 排队汇总条：只切换到「进行中」筛选，不会把已经在筛选中的列表又关掉。 */
+    showQueued() {
+      this.runningOnly = true
+      this.filterMenuVisible = false
+    },
     async openTodoSheet() {
       this.filterMenuVisible = false
       this.todoSheetVisible = true
@@ -1122,6 +1156,27 @@ export default {
       // 先选中并跳转，历史记录由会话页自己加载：点开即有反馈，不再等网络。
       selectSession(session.id)
       uni.navigateTo({ url: `/pages/chat/index?id=${encodeURIComponent(session.id)}` })
+    },
+    /**
+     * 行内快捷入口：直接进这个任务的文件列表。
+     *
+     * 这里刻意不调用 selectSession：只是看一眼文件，不该把当前会话切走
+     * （切换会清空正文、重新拉待办）。文件页按 URL 里的 sessionId 自己找会话。
+     */
+    openSessionFiles(session) {
+      if (!session?.id) return
+      if (this.sessionPress?.clickBlocked()) return
+      uni.navigateTo({
+        url: `/pages/files/index?sessionId=${encodeURIComponent(session.id)}`
+      })
+    },
+    /** 行内快捷入口：直接进这个任务的会话知识库（不带 from=chat，避免跳回列表）。 */
+    openSessionKnowledge(session) {
+      if (!session?.id) return
+      if (this.sessionPress?.clickBlocked()) return
+      uni.navigateTo({
+        url: `/pages/knowledge/index?sessionId=${encodeURIComponent(session.id)}&from=sessions`
+      })
     },
     /** 汇总条点一下：直接打开最近结束、还没看过的那个会话。 */
     openLatestUnread() {
@@ -1522,6 +1577,40 @@ export default {
 .unread-summary-action {
   flex-shrink: 0;
   color: var(--resume);
+  font-size: calc(22rpx * var(--font-scale));
+  opacity: 0.85;
+}
+/* 排队汇总行：和「未查看」汇总同一位置、同一结构，只换成暂停色。 */
+.queue-summary {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin: 0 0 16rpx;
+  padding: 14rpx 18rpx;
+  border-radius: 14rpx;
+  background: var(--pause-soft);
+  box-shadow: var(--control-shadow);
+}
+.queue-summary:active {
+  opacity: 0.75;
+}
+.queue-summary-dot {
+  background: var(--pause);
+  animation: none;
+}
+.queue-summary-count {
+  flex: 1;
+  min-width: 0;
+  color: var(--pause);
+  font-size: calc(24rpx * var(--font-scale));
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queue-summary-action {
+  flex-shrink: 0;
+  color: var(--pause);
   font-size: calc(22rpx * var(--font-scale));
   opacity: 0.85;
 }
@@ -2081,6 +2170,21 @@ export default {
   margin-top: 8rpx;
   color: var(--dim);
   font-size: calc(22rpx * var(--font-scale));
+}
+/* 行内快捷入口：语义色只改文字与底色，尺寸仍走 .chip 的全局 token。 */
+.session-links {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
+.session-link.file {
+  color: var(--file);
+  background: var(--file-soft);
+}
+.session-link.knowledge {
+  color: var(--knowledge);
+  background: var(--knowledge-soft);
 }
 .session-plan-row {
   margin-top: 8rpx;

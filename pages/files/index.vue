@@ -152,9 +152,11 @@ export default {
     this.sessionId = options?.sessionId
       ? decodeURIComponent(options.sessionId)
       : store.currentSessionId
+    // 先按 URL 里的 sessionId 找：从会话列表的快捷入口进来时，当前会话
+    // 可能是另一个任务，用 currentSession 会显示错误的任务名和工作目录。
     const session =
-      store.currentSession ||
       store.sessions.find((item) => item.id === this.sessionId) ||
+      (store.currentSessionId === this.sessionId ? store.currentSession : null) ||
       null
     this.sessionTitle = session?.title || ''
     this.workspacePath = session?.cwd || session?.workspacePath || ''

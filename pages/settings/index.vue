@@ -455,26 +455,40 @@
 
     <view v-if="activeSection === 'settings-connection'" class="card">
       <text class="card-title">{{ t('连接') }}</text>
-      <view class="row">
-        <text class="label">{{ t('后台保持') }}</text>
-        <text class="value small" :class="{ warn: keepAliveStateTone === 'warn' }">
-          {{ keepAliveStateText }}
+      <template v-if="webRuntime">
+        <view class="row">
+          <text class="label">{{ t('运行方式') }}</text>
+          <text class="value small">{{ t('网页版（浏览器）') }}</text>
+        </view>
+        <text class="hint">
+          {{ t('网页版的连接由浏览器托管：切到后台后可能被系统挂起，回到前台会自动重连，不需要重新扫码。') }}
         </text>
-      </view>
-      <view class="row">
-        <text class="label">{{ t('系统后台限制') }}</text>
-        <text class="value small">{{ batteryStateText }}</text>
-      </view>
-      <text v-if="backgroundReportText" class="hint">{{ backgroundReportText }}</text>
-      <text v-if="backgroundTraceText" class="hint">{{ backgroundTraceText }}</text>
-      <view class="card-actions single">
-        <button class="btn ghost small-btn" @click="openBatterySettingsPage">
-          {{ t('允许后台运行') }}
-        </button>
-      </view>
-      <text class="hint">
-        {{ t('国产系统还需要在“应用启动管理”里把 Pilot 设为手动管理，并允许自启动和后台活动。') }}
-      </text>
+        <text class="hint">
+          {{ t('把 Pilot 添加到主屏幕后运行更稳定，也不会被浏览器标签页回收。') }}
+        </text>
+      </template>
+      <template v-else>
+        <view class="row">
+          <text class="label">{{ t('后台保持') }}</text>
+          <text class="value small" :class="{ warn: keepAliveStateTone === 'warn' }">
+            {{ keepAliveStateText }}
+          </text>
+        </view>
+        <view class="row">
+          <text class="label">{{ t('系统后台限制') }}</text>
+          <text class="value small">{{ batteryStateText }}</text>
+        </view>
+        <text v-if="backgroundReportText" class="hint">{{ backgroundReportText }}</text>
+        <text v-if="backgroundTraceText" class="hint">{{ backgroundTraceText }}</text>
+        <view class="card-actions single">
+          <button class="btn ghost small-btn" @click="openBatterySettingsPage">
+            {{ t('允许后台运行') }}
+          </button>
+        </view>
+        <text class="hint">
+          {{ t('国产系统还需要在“应用启动管理”里把 Pilot 设为手动管理，并允许自启动和后台活动。') }}
+        </text>
+      </template>
       <view class="card-actions">
         <button class="btn primary small-btn" @click="reconnect">{{ t('立即重新连接') }}</button>
         <button class="btn danger small-btn" @click="unpair">{{ t('解除当前电脑') }}</button>
@@ -541,7 +555,7 @@
     </view>
 
     <!-- 文件缓存：手机上打开过的文件留多久，只影响本机，不碰电脑上的文件。 -->
-    <view v-if="activeSection === 'settings-security'" id="settings-file-cache" class="card">
+    <view v-if="activeSection === 'settings-security' && !webRuntime" id="settings-file-cache" class="card">
       <text class="card-title">{{ t('文件缓存') }}</text>
       <view class="theme-options theme-options-grid">
         <view
@@ -570,6 +584,17 @@
         <text class="value small">{{ versionText }}</text>
       </view>
 
+      <template v-if="webRuntime">
+        <!-- 网页版没有本地安装包：更新由服务器推送，刷新即得。 -->
+        <text class="hint">
+          {{ t('网页版随服务器更新，重新打开或下拉刷新即可用上最新版本，不需要单独下载安装包。') }}
+        </text>
+        <view class="card-actions">
+          <button class="btn ghost small-btn" @click="reloadWebApp">{{ t('刷新到最新版本') }}</button>
+          <button class="btn ghost small-btn" @click="openDownloadPage">{{ t('下载安卓 App') }}</button>
+        </view>
+      </template>
+      <template v-else>
       <view v-if="updateVisible" class="update-box" :class="updateState.status">
         <view class="update-head">
           <text class="update-title">{{ updateTitle }}</text>
@@ -614,6 +639,7 @@
       <view class="card-actions single">
         <button class="btn primary small-btn" @click="checkUpdate">{{ t('检查更新') }}</button>
       </view>
+      </template>
       <view class="card-actions single">
         <button class="btn ghost small-btn" @click="shareApp">{{ t('分享给朋友') }}</button>
       </view>
@@ -622,7 +648,9 @@
           {{ t('打开更新页面') }}
         </button>
         <button class="btn ghost small-btn" @click="openChangelogRecord">{{ t('版本更新记录') }}</button>
-        <button class="btn ghost small-btn" @click="openDownloadPage">{{ t('用浏览器下载') }}</button>
+        <button v-if="!webRuntime" class="btn ghost small-btn" @click="openDownloadPage">
+          {{ t('用浏览器下载') }}
+        </button>
       </view>
       <text class="note">
         {{ t('消息在手机与电脑之间端到端加密（ECDH P-256 + HKDF-SHA256 + AES-256-GCM），中继服务器只转发密文。') }}
@@ -851,6 +879,7 @@ import {
   saveFileCacheDays,
   sweepFileCache
 } from '../../lib/file-cache.js'
+import { isWebRuntime } from '../../lib/platform.js'
 
 export default {
   components: { AppDialog, AppDialogHost, AppPicker, AppSheet },
@@ -990,6 +1019,10 @@ export default {
   computed: {
     store() {
       return store
+    },
+    /** 网页版（H5 / PWA）：后台保活、本地文件缓存、APK 更新都不存在，入口要换。 */
+    webRuntime() {
+      return isWebRuntime()
     },
     workspacePath() {
       return String(
@@ -1864,6 +1897,18 @@ export default {
     },
     goUpdatePage() {
       openUpdatePage()
+    },
+    /** 网页版没有安装包：刷新一次就能拿到新版本的壳与静态资源。 */
+    reloadWebApp() {
+      try {
+        if (typeof location !== 'undefined' && typeof location.reload === 'function') {
+          location.reload()
+          return
+        }
+      } catch {
+        // 下面用 uni 兵底
+      }
+      uni.showToast({ title: t('请手动刷新页面'), icon: 'none' })
     },
     openFeedback() {
       uni.navigateTo({ url: '/pages/feedback/index' })

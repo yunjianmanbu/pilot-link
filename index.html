@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Pilot Link</title>
+    <!-- 安装到主屏（PWA）：manifest 与 sw.js 由 scripts/prepare-app-web.mjs 在
+         H5 构建后铺到站点根目录；开发预览下取不到时注册会静默跳过。 -->
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./static/icons/192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./static/icons/180.png" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Pilot Link" />
+    <meta name="format-detection" content="telephone=no" />
     <!--preload-links-->
     <!--app-context-->
     <script>
@@ -23,6 +36,12 @@
         margin: 0;
         padding: 0;
         background: #131417;
+      }
+      /* 装成独立窗口后，状态栏区域由页面自己铺色；与 App.vue 的 --bg 一致。 */
+      @media (prefers-color-scheme: light) {
+        html,
+        body {
+          background: #ffffff;        }
       }
     </style>
   </head>

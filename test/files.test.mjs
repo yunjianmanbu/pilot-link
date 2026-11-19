@@ -11,8 +11,10 @@ import {
   fileUrlOf,
   formatFileSize,
   htmlPreviewDocument,
+  isBrowserFileScope,
   isHtmlName,
   localFilePathFor,
+  openLocalFile,
   readRemoteBytes,
   readRemoteText,
   safeFileName,
@@ -236,5 +238,131 @@ test('缺少工作区时拒绝分块读取', async () => {
   await assert.rejects(
     readRemoteBytes(async () => ({}), { path: 'C:/docs/a.txt' }),
     /缺少工作区信息/
+  )
+})
+
+/**
+ * 假的浏览器环境：Blob / URL.createObjectURL / document.createElement('a')。
+ * 只够跑 H5 分支，不引入 jsdom。
+ */
+function makeFakeBrowser() {
+  const created = []
+  const anchors = []
+  const revoked = []
+  const blobs = []
+  const web = {
+    document: {
+      createElement(tag) {
+        assert.equal(tag, 'a')
+        const anchor = { tag, href: '', download: '', rel: '', clicked: false, removed: false }
+        anchor.click = () => {
+          anchor.clicked = true
+          created.push(anchor)
+        }
+        anchor.remove = () => {
+          anchor.removed = true
+        }
+        anchors.push(anchor)
+        return anchor
+      },
+      body: {
+        appendChild(node) {
+          node.attached = true
+        },
+        removeChild(node) {
+          node.removed = true
+        }
+      }
+    },
+    URL: {
+      createObjectURL(blob) {
+        blobs.push(blob)
+        return `blob:pilot/${blobs.length}`
+      },
+      revokeObjectURL(url) {
+        revoked.push(url)
+      }
+    },
+    open(url) {
+      opened.push(url)
+      return {}
+    },
+    setTimeout() {
+      return 0
+    }
+  }
+  const opened = []
+  web.Blob = class Blob {
+    constructor(parts, options = {}) {
+      this.parts = parts
+      this.type = options.type || ''
+      const total = parts.reduce((sum, part) => {
+        if (typeof part === 'string') return sum + utf8Encode(part).length
+        return sum + (part?.length || 0)
+      }, 0)
+      this.size = total
+    }
+  }
+  return { web, anchors, created, opened, revoked, blobs }
+}
+
+test('网页版（H5/PWA）没有 plus.io 时用 Blob 下载而不是报错', async () => {
+  const content = utf8Encode('网页版文件内容')
+  const request = chunkedRequest(content, 5, 'C:/docs/notes.txt')
+  const { web, blobs } = makeFakeBrowser()
+
+  assert.equal(isBrowserFileScope({ window: web }), true)
+
+  const result = await downloadRemoteFile(
+    request,
+    { path: 'C:/docs/notes.txt', name: 'notes.txt', size: content.length },
+    { workspacePath: 'C:/docs', plus: null, window: web }
+  )
+
+  assert.equal(result.web, true)
+  assert.equal(result.filePath, 'blob:pilot/1')
+  assert.equal(result.size, content.length)
+  assert.equal(result.mime, 'text/plain;charset=utf-8')
+  // 分块被完整拼回一个 Blob，没有丢字节
+  assert.equal(blobs.length, 1)
+  assert.equal(blobs[0].size, content.length)
+})
+
+test('网页版写文本返回 blob URL，不尝试落盘', async () => {
+  const { web, blobs } = makeFakeBrowser()
+  const result = await writeLocalText('preview-报告.html', '<h1>你好</h1>', {
+    plus: null,
+    window: web
+  })
+  assert.equal(result.web, true)
+  assert.equal(result.name, 'preview-报告.html')
+  assert.match(result.filePath, /^blob:pilot\//)
+  assert.equal(result.size, utf8Encode('<h1>你好</h1>').length)
+  assert.equal(blobs[0].type, 'text/plain;charset=utf-8')
+})
+
+test('网页版打开文档走下载，图片走新标签', async () => {
+  const { web, created, opened } = makeFakeBrowser()
+
+  const doc = await openLocalFile('blob:pilot/1', '报告.docx', { window: web })
+  assert.equal(doc, true)
+  assert.equal(created.length, 1)
+  assert.equal(created[0].download, '报告.docx')
+  assert.equal(created[0].clicked, true)
+  assert.equal(opened.length, 0)
+
+  const image = await openLocalFile('blob:pilot/2', 'shot.png', { window: web })
+  assert.equal(image, true)
+  assert.deepEqual(opened, ['blob:pilot/2'])
+})
+
+test('既没有 plus.io 也没有浏览器时，仍给出明确错误', async () => {
+  await assert.rejects(
+    downloadRemoteFile(async () => ({}), { path: 'C:/docs/a.txt' }, {
+      workspacePath: 'C:/docs',
+      plus: null,
+      window: null
+    }),
+    /当前环境不支持保存文件/
   )
 })

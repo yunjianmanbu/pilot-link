@@ -1,0 +1,35 @@
+{
+  "name": "Pilot Link",
+  "short_name": "Pilot",
+  "description": "用手机连接本机的 Pilot：看会话、继续对话、执行过程、审批工具。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "portrait",
+  "background_color": "#131417",
+  "theme_color": "#131417",
+  "categories": ["developer", "productivity"],
+  "icons": [
+    {
+      "src": "./static/icons/192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./static/icons/512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./static/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
