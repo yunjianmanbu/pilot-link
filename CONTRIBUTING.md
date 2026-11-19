@@ -71,6 +71,17 @@ cd mobile-client && npm install && npm test
 - [ ] 没有新增个人机器路径、密钥、媒体文件
 - [ ] 文档同步更新（改了行为就改对应的 README 或 `docs/`）
 
+## 谁能推 `main`
+
+`main` 由 ruleset `protect-main` 保护：
+
+- 维护者账号（`@yunjianmanbu`、`@embeddedmeng`、`@rigongyizu`）可以直接推送；
+- 其他人一律 fork → PR，PR 必须拿到 1 个 CODEOWNERS（`@yunjianmanbu`）审批才能合入；
+- 禁止强推（`non_fast_forward`）和删除 `main`。
+
+所以外部贡献者不需要申请写权限，直接开 PR 即可；只有维护者会把你的分支 rebase 或 squash。
+这条策略由 `scripts/setup-github-repos.mjs --protect-only` 维护，改名单请改脚本里的 `PUSHERS` 后重跑。
+
 ## 报告安全问题
 
 不要开公开 issue，走 [`SECURITY.md`](SECURITY.md) 里的私下渠道。
