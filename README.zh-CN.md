@@ -2,6 +2,7 @@
 
 [English](README.md) | **中文**
 
+[![CI](https://github.com/yunjianmanbu/pilot-link/actions/workflows/ci.yml/badge.svg)](https://github.com/yunjianmanbu/pilot-link/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/yunjianmanbu/pilot-link?color=blue)](https://github.com/yunjianmanbu/pilot-link/releases)
 [![Discussions](https://img.shields.io/badge/discussions-open-2ea44f.svg)](https://github.com/yunjianmanbu/pilot/discussions)
@@ -196,9 +197,12 @@ DCloud 离线 appkey 校验 **appid + 包名 + 证书 SHA1** 三者同时匹配�
 `pilot/scripts/prepare-app-android.mjs` 里的 `APP_KEY` 一处即可，别手改 `.build/`。
 
 ```bash
-node pilot/scripts/prepare-app-android.mjs --check   # 只校验 appid / 包名 / appkey / 权限，不一致退出 1
+node pilot/scripts/prepare-app-android.mjs --check   # 只校验 appid / 包名 / appkey / 权限 / 应用名，不一致退出 1
 node pilot/scripts/prepare-app-android.mjs           # 把上面的常量写进离线工程
 ```
+
+桌面显示名（`res/values/strings.xml` 的 `app_name`）由脚本按 `manifest.json` 的 `name`
+对齐。它属于原生资源，wgt 改不到，只有重装全量 APK 才会更新。
 
 脚本刻意不改 `build.gradle` 的 `versionCode` / `versionName` 与 `dcloud_control.xml` 的
 `appver`：那是**壳版本**，只在发全量 APK 时改；发 wgt 只动 `manifest.json`。
