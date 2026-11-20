@@ -117,7 +117,7 @@ pwa/
   sw.js                 Service Worker: network-first shell, cache-first static assets
 lib/
   bytes.js              base64url / UTF-8 / randomness
-  e2e.js                end-to-end crypto compatible with pilot/client src/main/companion/crypto.ts
+  e2e.js                end-to-end crypto compatible with pilot/pilot src/main/companion/crypto.ts
   pairing.js            pairing payload parsing
   storage.js            multiple computers, theme, per-device caches
   client.js             WebSocket connector client (heartbeat, reconnect, sequence, encryption)

@@ -227,7 +227,7 @@ node pilot/scripts/prepare-app-android.mjs           # 把上面的常量写进�
 出包（仓库根目录）：
 
 ```bash
-"/d/soft/HBuilderX.4.24.2024072208/HBuilderX/cli.exe" publish app-android --type appResource --project "E:/code/agent/manbu-agent-workspace/pilot/app"
+"/d/soft/HBuilderX.4.24.2024072208/HBuilderX/cli.exe" publish app-android --type appResource --project "E:/code/agent/manbu-agent-workspace/pilot/pilot-link"
 node pilot/scripts/pack-app-wgt.mjs             # → pilot/release/android/Pilot-<versionName>.wgt
 node pilot/scripts/pack-app-wgt.mjs --json      # 只打印 latest.json 的 wgt 块
 ```
