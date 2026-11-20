@@ -6,6 +6,8 @@
  * 两端必须派生出一模一样的密钥、能互相解密，并且拒绝被篡改的密文。
  */
 
+import './locale-zh.mjs'
+
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'

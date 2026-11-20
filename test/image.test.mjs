@@ -3,6 +3,8 @@
  * 并保证读不出文件时给出明确错误，而不是静默无图。
  */
 
+import './locale-zh.mjs'
+
 import test from 'node:test'
 import assert from 'node:assert/strict'
 

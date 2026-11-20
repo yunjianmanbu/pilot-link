@@ -24,7 +24,16 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const APP_DIR = join(ROOT, 'app')
+
+/**
+ * 本脚本同时活在两种布局里：
+ *   主仓库 pilot/scripts/          → 手机端在 pilot/app，产物在 pilot/app/unpackage/...
+ *   独立仓库 pilot-link/scripts/  → 仓库根就是手机端，产物在仓库根的 unpackage/...
+ * 写死 `ROOT/app` 在独立仓库里会拼成 <repo>/app/pwa/...，CI 里表现为一句
+ * “源文件缺失”，而不是“路径算错”。用根上有没有 manifest.json 判定。
+ */
+const standalone = !existsSync(join(ROOT, 'app', 'manifest.json')) && existsSync(join(ROOT, 'manifest.json'))
+const APP_DIR = standalone ? ROOT : join(ROOT, 'app')
 const PWA_DIR = join(APP_DIR, 'pwa')
 const DEFAULT_WEB_DIR = join(APP_DIR, 'unpackage', 'dist', 'build', 'web')
 

@@ -6,6 +6,8 @@
  * 以及页面/入口/协议方法都真的接上了。
  */
 
+import './locale-zh.mjs'
+
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'

@@ -9,6 +9,8 @@
  * 这里用假的 uni.connectSocket / SocketTask 验证这些路径都会主动收尾并重连。
  */
 
+import './locale-zh.mjs'
+
 import test from 'node:test'
 import assert from 'node:assert/strict'
 

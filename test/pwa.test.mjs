@@ -15,6 +15,17 @@ import vm from 'node:vm'
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const PWA_DIR = join(ROOT, 'pwa')
 
+/**
+ * `prepare-app-web.mjs` 在两种布局里的位置不同：
+ *   主仓库 pilot/app/test/        → 共享脚本在 pilot/scripts/
+ *   独立仓库 pilot-link/test/     → 拆仓时被带进仓库根的 scripts/
+ * 写死 `ROOT/../scripts` 只在主仓库成立，独立仓库里会指到仓库根之外（CI 里是
+ * `actual: ''` 之类莫名其妙的断言失败，而不是“脚本不存在”）。
+ */
+const SCRIPT_DIR = existsSync(join(ROOT, '..', 'scripts', 'prepare-app-web.mjs'))
+  ? join(ROOT, '..', 'scripts')
+  : join(ROOT, 'scripts')
+
 function readJson(file) {
   return JSON.parse(readFileSync(file, 'utf8'))
 }
@@ -35,7 +46,7 @@ function pngSize(relPath) {
 test('manifest 是合法 JSON，且声明为可安装的 standalone', () => {
   const manifest = readJson(join(PWA_DIR, 'manifest.webmanifest'))
   assert.equal(manifest.name, 'Pilot Link')
-  assert.equal(manifest.short_name, 'Pilot')
+  assert.equal(manifest.short_name, 'Pilot Link')
   assert.equal(manifest.display, 'standalone')
   assert.equal(manifest.start_url, './', 'start_url 要相对，线上挂在 /app/ 也能用')
   assert.equal(manifest.scope, './')
@@ -194,7 +205,7 @@ test('prepare-app-web.mjs 把壳文件铺到构建目录，--check 能查出缺�
   const { tmpdir } = await import('node:os')
   const { spawnSync } = await import('node:child_process')
 
-  const script = join(ROOT, '..', 'scripts', 'prepare-app-web.mjs')
+  const script = join(SCRIPT_DIR, 'prepare-app-web.mjs')
   const work = mkdtempSync(join(tmpdir(), 'pilot-app-web-'))
   const webDir = join(work, 'web')
   mkdirSync(join(webDir, 'static', 'icons'), { recursive: true })
@@ -248,7 +259,7 @@ test('prepare-app-web.mjs 注入预缓存清单，并改掉 index.html 的绝对
   const { tmpdir } = await import('node:os')
   const { spawnSync } = await import('node:child_process')
 
-  const script = join(ROOT, '..', 'scripts', 'prepare-app-web.mjs')
+  const script = join(SCRIPT_DIR, 'prepare-app-web.mjs')
   const work = mkdtempSync(join(tmpdir(), 'pilot-app-web-pre-'))
   const webDir = join(work, 'web')
   mkdirSync(join(webDir, 'assets'), { recursive: true })
