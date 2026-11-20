@@ -12,7 +12,7 @@
  *      这样同一份产物挂在域名根和 /app/ 子路径下都能直接用。
  *
  * 用法（仓库根目录，H5 构建之后）：
- *   node pilot/scripts/prepare-app-web.mjs              # 默认写 pilot/app/unpackage/dist/build/web
+ *   node pilot/scripts/prepare-app-web.mjs              # 默认写 pilot/pilot-link/unpackage/dist/build/web
  *   node pilot/scripts/prepare-app-web.mjs --check      # 只检查，不写文件
  *   node pilot/scripts/prepare-app-web.mjs --dir <路径>  # 指向别的构建目录
  *
@@ -27,13 +27,13 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 /**
  * 本脚本同时活在两种布局里：
- *   主仓库 pilot/scripts/          → 手机端在 pilot/app，产物在 pilot/app/unpackage/...
+ *   主仓库 pilot/scripts/          → 手机端在 pilot/pilot-link，产物在 pilot/pilot-link/unpackage/...
  *   独立仓库 pilot-link/scripts/  → 仓库根就是手机端，产物在仓库根的 unpackage/...
- * 写死 `ROOT/app` 在独立仓库里会拼成 <repo>/app/pwa/...，CI 里表现为一句
+ * 写死 `ROOT/pilot-link` 在独立仓库里会拼成 <repo>/pilot-link/pwa/...，CI 里表现为一句
  * “源文件缺失”，而不是“路径算错”。用根上有没有 manifest.json 判定。
  */
-const standalone = !existsSync(join(ROOT, 'app', 'manifest.json')) && existsSync(join(ROOT, 'manifest.json'))
-const APP_DIR = standalone ? ROOT : join(ROOT, 'app')
+const standalone = !existsSync(join(ROOT, 'pilot-link', 'manifest.json')) && existsSync(join(ROOT, 'manifest.json'))
+const APP_DIR = standalone ? ROOT : join(ROOT, 'pilot-link')
 const PWA_DIR = join(APP_DIR, 'pwa')
 const DEFAULT_WEB_DIR = join(APP_DIR, 'unpackage', 'dist', 'build', 'web')
 
@@ -180,7 +180,7 @@ for (const icon of manifest.icons || []) {
   }
   const file = join(webDir, rel)
   if (!existsSync(file)) {
-    problems.push(`manifest 图标不存在：${rel}（先跑 node pilot/app/scripts/gen-icons.mjs）`)
+    problems.push(`manifest 图标不存在：${rel}（先跑 node pilot/pilot-link/scripts/gen-icons.mjs）`)
     continue
   }
   const match = /^(\d+)x(\d+)$/.exec(String(icon.sizes || ''))

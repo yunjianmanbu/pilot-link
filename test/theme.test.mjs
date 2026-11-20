@@ -6,12 +6,12 @@ import { dirname, join } from 'node:path'
 
 /**
  * 手机端的配色来自 App.vue 里的 CSS 变量，桌面客户端的是
- * pilot/client/src/renderer/src/styles.css。两端保持同一套色值，
+ * pilot/pilot/src/renderer/src/styles.css。两端保持同一套色值，
  * 这里直接读两边的样式文件比对，避免以后改了一边忘了另一边。
  */
 const here = dirname(fileURLToPath(import.meta.url))
 const APP_VUE = join(here, '..', 'App.vue')
-const CLIENT_CSS = join(here, '..', '..', 'client', 'src', 'renderer', 'src', 'styles.css')
+const CLIENT_CSS = join(here, '..', '..', 'pilot', 'src', 'renderer', 'src', 'styles.css')
 const PAGES_JSON = join(here, '..', 'pages.json')
 
 /** 取某个选择器块里的自定义属性，返回 { --bg: '#131417', ... }。 */
@@ -72,7 +72,7 @@ const LIGHT_PAIRS = DARK_PAIRS
 
 
 // 拆仓后本仓库不含桌面端源码与工作区文档：读不到就跳过，而不是判失败。
-const skipCross = clientCss != null ? false : '独立仓库不含桌面端源码（pilot/client）与工作区文档（pilot/docs），跳过跨仓库一致性检查'
+const skipCross = clientCss != null ? false : '独立仓库不含桌面端源码（pilot/pilot）与工作区文档（pilot/docs），跳过跨仓库一致性检查'
 test('手机端深色主题与客户端同色', { skip: skipCross }, () => {
   for (const [appKey, clientKey] of DARK_PAIRS) {
     assert.equal(

@@ -1,7 +1,7 @@
 /**
  * 手机端（纯 JS noble）与电脑端（Node crypto）端到端加密的字节级兼容测试。
  *
- * 电脑端实现直接复刻 pilot/client/src/main/companion/crypto.ts 的算法：
+ * 电脑端实现直接复刻 pilot/pilot/src/main/companion/crypto.ts 的算法：
  * ECDH P-256 + HKDF-SHA256 + AES-256-GCM，AAD 为十进制序号。
  * 两端必须派生出一模一样的密钥、能互相解密，并且拒绝被篡改的密文。
  */

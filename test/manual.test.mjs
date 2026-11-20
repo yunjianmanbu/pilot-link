@@ -16,7 +16,7 @@ const manualPage = readFileSync(join(appRoot, 'pages', 'manual', 'index.vue'), '
 
 
 // 拆仓后本仓库不含桌面端源码与工作区文档：读不到就跳过，而不是判失败。
-const skipCross = existsSync(docs) ? false : '独立仓库不含桌面端源码（pilot/client）与工作区文档（pilot/docs），跳过跨仓库一致性检查'
+const skipCross = existsSync(docs) ? false : '独立仓库不含桌面端源码（pilot/pilot）与工作区文档（pilot/docs），跳过跨仓库一致性检查'
 test('内置使用手册与 docs/操作手册.md 保持同步', { skip: skipCross }, () => {
   const source = readFileSync(docs, 'utf8').replace(/\r\n?/g, '\n')
   assert.equal(MANUAL_MARKDOWN, source, '手册内容过期，运行 node pilot/scripts/gen-manual.mjs')

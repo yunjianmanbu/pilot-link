@@ -12,12 +12,12 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
 const page = read('pages/settings/index.vue')
 const store = read('store/index.js')
 const locale = read('lib/locale-en.js')
-const CLIENT_SERVER = path.join(ROOT, '..', 'client', 'src', 'main', 'companion', 'server.ts')
+const CLIENT_SERVER = path.join(ROOT, '..', 'pilot', 'src', 'main', 'companion', 'server.ts')
 const protocol = fs.existsSync(CLIENT_SERVER) ? fs.readFileSync(CLIENT_SERVER, 'utf8') : null
 
 
 // 拆仓后本仓库不含桌面端源码与工作区文档：读不到就跳过，而不是判失败。
-const skipCross = protocol != null ? false : '独立仓库不含桌面端源码（pilot/client）与工作区文档（pilot/docs），跳过跨仓库一致性检查'
+const skipCross = protocol != null ? false : '独立仓库不含桌面端源码（pilot/pilot）与工作区文档（pilot/docs），跳过跨仓库一致性检查'
 test('字节格式与桌面端一致，读不到时不显示 0', () => {
   assert.equal(formatBytes(512), '512 B')
   assert.equal(formatBytes(1536), '1.5 KB')

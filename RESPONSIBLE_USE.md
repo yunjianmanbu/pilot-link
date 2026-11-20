@@ -16,11 +16,11 @@ Pilot Link（手机端，手机控电脑）、Pilot Client（手机反控端，�
 | 产品上已经做死的选择 | 位置 |
 | --- | --- |
 | 不做静默后台录屏 / 录音：屏幕采集必须前台可见提示 + 通知栏常驻 | [`reverse-control-plan.md`](https://github.com/yunjianmanbu/pilot-client/blob/main/docs/reverse-control-plan.md) 第四节 |
-| 清空手机、重启手机属 L4，**默认策略上限 L3，直接拒绝**，要显式放开 | `mobile-client/lib/reverse-control.js` 的 `DEFAULT_POLICY` |
+| 清空手机、重启手机属 L4，**默认策略上限 L3，直接拒绝**，要显式放开 | `pilot-client/lib/reverse-control.js` 的 `DEFAULT_POLICY` |
 | L2 以上每条命令都要手机端逐次确认，确认失败按拒绝处理 | `reverse-control.js` 的 `createGateway` |
 | 每条命令都写审计，**包括被拒绝、参数非法、执行失败的** | 同上，`fail()` 与成功分支各写一条 |
-| 审计里剪贴板正文等敏感参数脱敏，只留时间 / 等级 / 结果 / 耗时 | `mobile-client/lib/audit.js` |
-| 清空审计要二次确认，且历史不在电脑端留副本 | `mobile-client/pages/audit/index.vue` |
+| 审计里剪贴板正文等敏感参数脱敏，只留时间 / 等级 / 结果 / 耗时 | `pilot-client/lib/audit.js` |
+| 清空审计要二次确认，且历史不在电脑端留副本 | `pilot-client/pages/audit/index.vue` |
 | 用户至少有三条独立路径发现"有人在操作我的手机"：悬浮提示、通知栏、审计记录 | 方案文档第四节第 3 条 |
 | 中继是**盲转发**：不落盘、不解析载荷，因此也不可能被要求交出货真价实的内容 | [`pilot-connector` README](https://github.com/yunjianmanbu/pilot-connector#security-model)、其 `SECURITY.md` |
 
@@ -72,17 +72,17 @@ Pilot Link（手机端，手机控电脑）、Pilot Client（手机反控端，�
 
 | 护栏 | 默认值 | 位置 |
 | --- | --- | --- |
-| 危险能力上限 | `maxLevel: 3`，L4（清空手机 / 重启）默认拒绝 | `mobile-client/lib/reverse-control.js` |
+| 危险能力上限 | `maxLevel: 3`，L4（清空手机 / 重启）默认拒绝 | `pilot-client/lib/reverse-control.js` |
 | 逐次确认 | L2 及以上每条命令都要手机端确认 | 同上 `createGateway` |
 | 调用限流 | 每条命令 60 次 / 分钟 | 同上 `DEFAULT_POLICY.perMinute` |
-| 审计 | 全路径记录，脱敏，最多 200 条 | `mobile-client/lib/audit.js` |
-| 中继监听地址 | `BIND=127.0.0.1`，只允许反代接入 | `relay/server.mjs` |
+| 审计 | 全路径记录，脱敏，最多 200 条 | `pilot-client/lib/audit.js` |
+| 中继监听地址 | `BIND=127.0.0.1`，只允许反代接入 | `pilot-connector/server.mjs` |
 | 中继房间 / 帧 / 速率 | 每房间最多 4 台手机、单帧 1 MB、每条连接 900 条 / 分钟、心跳连丢 3 次断开 | 同上 |
 | **按来源 IP 的连接上限** | `MAX_CONNECTIONS_PER_IP=64`（`0` 关闭） | 同上，`upgrade` 阶段计数 |
 | **IP 黑名单** | `RELAY_BLOCK_IPS=1.2.3.4,5.6.7.8` | 同上 |
 | **L1 准入码** | `RELAY_ACCESS_KEYS=home:<随机>`，`RELAY_ACCESS_STRICT=1` 强制；默认先只记录 | 同上，建房间前校验，不通过的拿 `4009` |
 | **随机连接路径** | `WS_PATH=/c/<32 位十六进制>`（安装脚本自动生成） | 同上，`upgrade` 阶段判定 |
-| 中继日志 | 不记录帧内容，只保留连接数与健康检查状态 | `relay/README.md`「安全边界」 |
+| 中继日志 | 不记录帧内容，只保留连接数与健康检查状态 | `pilot-connector/README.md`「安全边界」 |
 
 最后三项是给**中继运营方**的：中继读不到载荷，所以运营方唯一的合规止损手段就是"按来源断流"
 或"先不发连接串"，而不是"看内容判断"。准入码与随机路径的作用是让地址泄露后不至于直接变成

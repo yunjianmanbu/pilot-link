@@ -7,7 +7,7 @@ import { messageTime } from '../lib/format.js'
 import { createPressGesture, movedBeyond, touchPoint } from '../lib/press.js'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
-const CLIENT = path.join(ROOT, '..', 'client')
+const CLIENT = path.join(ROOT, '..', 'pilot')
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
 const readClient = (relative) => {
   const abs = path.join(CLIENT, relative)
@@ -27,7 +27,7 @@ const locale = read('lib/locale-en.js')
 
 
 // 拆仓后本仓库不含桌面端源码与工作区文档：读不到就跳过，而不是判失败。
-const skipCross = protocol != null ? false : '独立仓库不含桌面端源码（pilot/client）与工作区文档（pilot/docs），跳过跨仓库一致性检查'
+const skipCross = protocol != null ? false : '独立仓库不含桌面端源码（pilot/pilot）与工作区文档（pilot/docs），跳过跨仓库一致性检查'
 test('首页长按会话可以重命名、复制和删除', () => {
   assert.ok(sessions.includes('@touchstart="startSessionPress(session, $event)"'), '会话卡片缺少长按入口')
   assert.ok(sessions.includes('@touchmove="moveSessionPress"'), '会话长按没有跟随手指移动')

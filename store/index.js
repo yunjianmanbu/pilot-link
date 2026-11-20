@@ -2631,6 +2631,7 @@ export async function pairWithPayload(payload) {
       lanUrls: Array.isArray(result.lanUrls) ? result.lanUrls : [],
       room: result.room || payload.room || '',
       roomKey: result.roomKey || payload.roomKey || '',
+      access: payload.access || '',
       deviceId: payload.deviceId,
       deviceName: result.deviceName || payload.deviceName,
       phoneId,

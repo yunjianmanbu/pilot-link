@@ -11,10 +11,10 @@ Apache-2.0 第 6 条不授予商标权：Pilot、Pilot Link 的名称与 Logo �
 
 LICENSE 对以下四个子项目生效，各自发布为独立仓库；没有任何一个组件采用不同协议，也不存在双授权：
 
-  client/         客户端：Electron 桌面端（含内置 CLI 与 CLI 的 Web 控制台）
-  app/            被控端：uni-app Android 手机端
-  mobile-client/  控制端：Pilot Client 手机反控端
-  relay/          中继器（云端盲转发，与客户端完全相同的 Apache-2.0）
+  pilot/         客户端：Electron 桌面端（含内置 CLI 与 CLI 的 Web 控制台）
+  pilot-link/            被控端：uni-app Android 手机端
+  pilot-client/  控制端：Pilot Client 手机反控端
+  pilot-connector/          中继器（云端盲转发，与客户端完全相同的 Apache-2.0）
 
 site/（官网与下载清单）不开源：不建仓库，也不进公开源码包。scripts/、docs/、examples/ 不单独
 建仓，但随源码包 Pilot-source-<version>.tar.gz 一起分发；拆仓时复制进各新仓库的脚本副本
@@ -37,11 +37,11 @@ site/（官网与下载清单）不开源：不建仓库，也不进公开源码
   Apache-2.0
     typescript
 
-间接依赖以各包自带的 LICENSE 文件为准（client/node_modules、app/node_modules、
-relay/node_modules）。桌面安装包内已随包分发机器可读的完整许可文本：
+间接依赖以各包自带的 LICENSE 文件为准（pilot/node_modules、pilot-link/node_modules、
+pilot-connector/node_modules）。桌面安装包内已随包分发机器可读的完整许可文本：
 
   release/win-unpacked/LICENSES.chromium.html   Chromium 及其依赖
   release/win-unpacked/LICENSE.electron.txt     Electron
 
-client/companion/vendor/noble/ 为 @noble 系列依赖的内联副本，版权归其原作者，
+pilot/companion/vendor/noble/ 为 @noble 系列依赖的内联副本，版权归其原作者，
 仍按其 MIT 协议使用。

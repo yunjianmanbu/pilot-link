@@ -26,7 +26,7 @@ import {
 } from '../lib/self-check.js'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
-const CLIENT = path.join(ROOT, '..', 'client')
+const CLIENT = path.join(ROOT, '..', 'pilot')
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
 const readClient = (relative) => {
   const abs = path.join(CLIENT, relative)
@@ -54,7 +54,7 @@ const sample = {
 
 
 // 拆仓后本仓库不含桌面端源码与工作区文档：读不到就跳过，而不是判失败。
-const skipCross = protocol != null ? false : '独立仓库不含桌面端源码（pilot/client）与工作区文档（pilot/docs），跳过跨仓库一致性检查'
+const skipCross = protocol != null ? false : '独立仓库不含桌面端源码（pilot/pilot）与工作区文档（pilot/docs），跳过跨仓库一致性检查'
 test('内视报告归一化后按异常优先排序', () => {
   const report = normalizeSelfCheck(sample)
   assert.ok(report)

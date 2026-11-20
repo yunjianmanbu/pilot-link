@@ -17,7 +17,7 @@ const PWA_DIR = join(ROOT, 'pwa')
 
 /**
  * `prepare-app-web.mjs` 在两种布局里的位置不同：
- *   主仓库 pilot/app/test/        → 共享脚本在 pilot/scripts/
+ *   主仓库 pilot/pilot-link/test/        → 共享脚本在 pilot/scripts/
  *   独立仓库 pilot-link/test/     → 拆仓时被带进仓库根的 scripts/
  * 写死 `ROOT/../scripts` 只在主仓库成立，独立仓库里会指到仓库根之外（CI 里是
  * `actual: ''` 之类莫名其妙的断言失败，而不是“脚本不存在”）。

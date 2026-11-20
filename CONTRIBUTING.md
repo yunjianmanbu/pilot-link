@@ -9,10 +9,10 @@ Pilot 由 4 个开源子项目组成，各自是一个仓库：
 
 | 仓库 | 内容 | 主要语言 |
 | --- | --- | --- |
-| `client` | Electron 桌面客户端（主进程 / 渲染进程 / 内置 CLI / CLI 的 Web 控制台） | TypeScript、React |
-| `app` | Pilot Link 手机端（uni-app）+ Android 壳原生工程 | Vue 3、Java |
-| `mobile-client` | Pilot Client 手机反控端（uni-app） | Vue 3 |
-| `relay` | 中继连接器（WebSocket 盲转发） | Node.js |
+| `pilot` | Electron 桌面客户端（主进程 / 渲染进程 / 内置 CLI / CLI 的 Web 控制台） | TypeScript、React |
+| `pilot-link` | Pilot Link 手机端（uni-app）+ Android 壳原生工程 | Vue 3、Java |
+| `pilot-client` | Pilot Client 手机反控端（uni-app） | Vue 3 |
+| `pilot-connector` | 中继连接器（WebSocket 盲转发） | Node.js |
 
 `site`（官网与下载清单）不开源，也不单独建仓库；`scripts`（构建 / 打包 / 发布 / 校验工具）、
 `docs`（专题文档）、`examples`（插件示例）不单独建仓库，但随官网发布的源码包一起分发。
@@ -20,23 +20,23 @@ Pilot 由 4 个开源子项目组成，各自是一个仓库：
 
 ## 开发环境
 
-- Node.js **20 或更高**（开发机验证用 22），包管理器：`client` 用 pnpm，其余用 npm
-- Windows 上的原生打包额外需要 PowerShell 7、JDK 17、Android SDK（见 `app/README.md`）
+- Node.js **20 或更高**（开发机验证用 22），包管理器：`pilot` 用 pnpm，其余用 npm
+- Windows 上的原生打包额外需要 PowerShell 7、JDK 17、Android SDK（见 `pilot-link/README.md`）
 
 ```bash
-cd client && pnpm install && pnpm dev      # 桌面端开发
-cd app    && npm install && npm test       # 手机端单测
-cd mobile-client && npm install && npm test
+cd pilot          && pnpm install && pnpm dev   # 桌面端开发
+cd pilot-link     && npm install && npm test    # 手机端单测
+cd pilot-client   && npm install && npm test    # 手机反控端单测
 ```
 
 ## 提交前必须自测
 
 | 仓库 | 命令 |
 | --- | --- |
-| `client` | `pnpm typecheck && pnpm test` |
-| `app` | `npm test` |
-| `mobile-client` | `npm test` |
-| `relay` | 见 `relay/README.md` 的部署验证一节 |
+| `pilot` | `pnpm typecheck && pnpm test` |
+| `pilot-link` | `npm test` |
+| `pilot-client` | `npm test` |
+| `pilot-connector` | 见 `pilot-connector/README.md` 的部署验证一节 |
 
 改到跨仓库共享脚本（`scripts/`）时，受影响的两个仓库都要跑一遍。
 
