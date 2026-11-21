@@ -14,6 +14,8 @@ Pilot Link 是 [Pilot](https://github.com/yunjianmanbu/pilot) 的手机端：连
 独立 Android App（uni-app，同一套源码也可以编译 H5），不是任何对话控制台的换皮版本 ——
 数据层按 Pilot 的中继协议与会话模型实现，界面沿用 uni-app 的交互结构。
 
+![配一次，四步，不注册账号](docs/diagrams/zh/pairing.png)
+
 | 扫码配对 | 会话列表 | 实时执行与审批 |
 | --- | --- | --- |
 | ![扫码配对](docs/screenshots/zh/pair.jpg) | ![会话列表](docs/screenshots/zh/sessions.jpg) | ![实时执行](docs/screenshots/zh/chat.jpg) |
@@ -67,6 +69,8 @@ Pilot Link 是 [Pilot](https://github.com/yunjianmanbu/pilot) 的手机端：连
 App 不需要登录任何账号。
 
 ## 协议适配
+
+![一个 App，三件事](docs/diagrams/zh/surfaces.png)
 
 手机端通过云端连接器或局域网直连与电脑端通信，协议版本为 2：
 

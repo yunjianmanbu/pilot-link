@@ -17,20 +17,23 @@ manage the queue and scheduled work, and preview the files a session wrote.
 It is not a reskin of any chat console: the data layer implements Pilot's relay protocol and session
 model directly, while the UI keeps uni-app's interaction structure.
 
-| Pair with a QR code | Files a session wrote | Execution mode and settings |
+![Pair once: four steps, no account](docs/diagrams/en/pairing.png)
+
+| Pair with a QR code | Session list and resume | Live run with inline approvals |
 | --- | --- | --- |
-| ![Pairing](docs/screenshots/en/pair.jpg) | ![Files](docs/screenshots/en/files.jpg) | ![Settings](docs/screenshots/en/settings.jpg) |
+| ![Pairing](docs/screenshots/en/pair.jpg) | ![Sessions](docs/screenshots/en/sessions.jpg) | ![Live run](docs/screenshots/en/chat.jpg) |
+
+| Knowledge base and memory | Files a session wrote | Execution mode and settings |
+| --- | --- | --- |
+| ![Knowledge](docs/screenshots/en/knowledge.jpg) | ![Files](docs/screenshots/en/files.jpg) | ![Settings](docs/screenshots/en/settings.jpg) |
 
 | Install, update and release notes | Feedback and diagnostics | Self-check | Manual |
 | --- | --- | --- | --- |
 | ![Update](docs/screenshots/en/update.jpg) | ![Feedback](docs/screenshots/en/feedback.jpg) | ![Self-check](docs/screenshots/en/self-check.jpg) | ![Manual](docs/screenshots/en/manual.jpg) |
 
-Screenshots are captured from the H5 build of these same sources. Session screens need a paired
-desktop, so they are taken from the Chinese build of the app:
-[session list](docs/screenshots/zh/sessions.jpg) ·
-[live run and approvals](docs/screenshots/zh/chat.jpg) ·
-[knowledge base](docs/screenshots/zh/knowledge.jpg) ·
-[memory evolution](docs/screenshots/zh/evolution.jpg).
+All screenshots are captured from the H5 build of these same sources, with an English UI. Session
+screens show a real paired desktop; the memory-evolution log only exists in the Chinese build today
+and is shown in [`README.zh-CN.md`](README.zh-CN.md).
 
 **There is no public relay run by the Pilot project.** To reach your computer across networks, deploy
 the connector yourself: <https://github.com/yunjianmanbu/pilot-connector>. On the same LAN the app can
@@ -80,6 +83,8 @@ Messages between phone and desktop are end-to-end encrypted (ECDH P-256 + HKDF-S
 AES-256-GCM); the relay only forwards ciphertext. The app needs no account of any kind.
 
 ## Protocol
+
+![One app, three jobs](docs/diagrams/en/surfaces.png)
 
 The phone talks to the desktop over the connector or a direct LAN connection, protocol version 2:
 
