@@ -16,7 +16,21 @@ Pilot Link 是 [Pilot](https://github.com/yunjianmanbu/pilot) 的手机端：连
 
 | 扫码配对 | 会话列表 | 实时执行与审批 |
 | --- | --- | --- |
-| ![扫码配对](docs/pair.jpg) | ![会话列表](docs/sessions.jpg) | ![实时执行](docs/chat.jpg) |
+| ![扫码配对](docs/screenshots/zh/pair.jpg) | ![会话列表](docs/screenshots/zh/sessions.jpg) | ![实时执行](docs/screenshots/zh/chat.jpg) |
+
+| 会话写入的文件 | 执行模式与设置 | 安装与更新说明 |
+| --- | --- | --- |
+| ![文件预览](docs/screenshots/zh/files.jpg) | ![设置](docs/screenshots/zh/settings.jpg) | ![更新](docs/screenshots/zh/update.jpg) |
+
+| 反馈与诊断 | 自检 | 使用手册 |
+| --- | --- | --- |
+| ![反馈](docs/screenshots/zh/feedback.jpg) | ![自检](docs/screenshots/zh/self-check.jpg) | ![手册](docs/screenshots/zh/manual.jpg) |
+
+| 会话知识库 | 记忆进化 |
+| --- | --- |
+| ![知识库](docs/screenshots/zh/knowledge.jpg) | ![进化](docs/screenshots/zh/evolution.jpg) |
+
+英文版 README 另有依据同一套源码的英文界面截图（`docs/screenshots/en/`）。
 
 **Pilot 官方不提供公共中继服务。** 需要跨网络时请自行部署连接器：
 <https://github.com/yunjianmanbu/pilot-connector>；同一局域网内 App 可以直连电脑。
@@ -39,6 +53,11 @@ Pilot Link 是 [Pilot](https://github.com/yunjianmanbu/pilot) 的手机端：连
   手机只提交相对路径，浏览、校验与创建都在电脑端完成；
 - 会话知识库：把每条指令和对应回复成对整理在一页，按 Markdown 渲染并可搜索、定位回原消息；
   列表缓存在本机，电脑离线时也能翻看和搜索；
+- 任务卡片四个快捷入口（文件 / 知识 / 链接 / 工具）都落在同一个「会话资源」页，可在这四个分类之间切换：
+  链接是这个任务里出现过的 http(s) 地址，可复制或交给系统浏览器打开；工具清单取自电脑端当前生效的配置
+  （内置 / MCP / 自写），带风险与启用状态；知识库按「我的指令 → Pilot 回复」成对列；文件是这个会话新增或修改的文件。
+  知识库与文件还能一键跳到各自的完整页面（搜索、工作区浏览）；
+  电脑离线时链接退为手机缓存里就地提取，知识库读本机缓存，工具与文件则明确说明需要连接，不把空列表当成功；
 - 保存多台已配对电脑并随时切换；已配对的手机可显示一次性换机二维码，另一台手机扫码连接同一台电脑；
 - 深色 / 浅色 / 跟随系统主题，十款低饱和主题色，三档对比度与饱和度、三档字号；
 - App 内检查更新：HTTPS 清单 + SHA-256 校验 + 用户确认后安装；

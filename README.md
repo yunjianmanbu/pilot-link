@@ -17,9 +17,20 @@ manage the queue and scheduled work, and preview the files a session wrote.
 It is not a reskin of any chat console: the data layer implements Pilot's relay protocol and session
 model directly, while the UI keeps uni-app's interaction structure.
 
-| Pair with a QR code | Session list | Live run and approvals |
+| Pair with a QR code | Files a session wrote | Execution mode and settings |
 | --- | --- | --- |
-| ![Pairing](docs/pair.jpg) | ![Sessions](docs/sessions.jpg) | ![Chat](docs/chat.jpg) |
+| ![Pairing](docs/screenshots/en/pair.jpg) | ![Files](docs/screenshots/en/files.jpg) | ![Settings](docs/screenshots/en/settings.jpg) |
+
+| Install, update and release notes | Feedback and diagnostics | Self-check | Manual |
+| --- | --- | --- | --- |
+| ![Update](docs/screenshots/en/update.jpg) | ![Feedback](docs/screenshots/en/feedback.jpg) | ![Self-check](docs/screenshots/en/self-check.jpg) | ![Manual](docs/screenshots/en/manual.jpg) |
+
+Screenshots are captured from the H5 build of these same sources. Session screens need a paired
+desktop, so they are taken from the Chinese build of the app:
+[session list](docs/screenshots/zh/sessions.jpg) ·
+[live run and approvals](docs/screenshots/zh/chat.jpg) ·
+[knowledge base](docs/screenshots/zh/knowledge.jpg) ·
+[memory evolution](docs/screenshots/zh/evolution.jpg).
 
 **There is no public relay run by the Pilot project.** To reach your computer across networks, deploy
 the connector yourself: <https://github.com/yunjianmanbu/pilot-connector>. On the same LAN the app can
@@ -50,6 +61,14 @@ connect directly.
 - Session knowledge base: every instruction and reply paired on one page, rendered as Markdown, with
   search and jump-back to the original message; the list is cached locally so it still works when the
   desktop is offline;
+- Four quick entries per task card (files / knowledge / links / tools) all land on one “session
+  resources” page you can switch between: links are the http(s) URLs that appeared in that task and can
+  be copied or handed to the system browser; the tool list comes from the desktop's live settings
+  (built-in / MCP / self-written) with risk and enablement; knowledge pairs “your instruction → Pilot
+  reply”; files are what this session added or changed. Knowledge and files each also open their full
+  page (search, workspace browsing). With the desktop offline, links fall back to what this phone
+  cached, knowledge reads the local cache, and tools and files say plainly that a connection is needed
+  instead of showing an empty list as success;
 - Keep several paired computers and switch between them; a paired phone can show a one-time
   hand-over QR code so a second phone connects to the same computer;
 - Dark / light / follow-system themes, ten low-saturation accent colours, three contrast and
