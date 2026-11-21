@@ -109,7 +109,7 @@
               <text class="rs-tag source">{{ sourceText(tool) }}</text>
               <text class="rs-tag risk" :class="'risk-' + tool.risk">{{ riskText(tool) }}</text>
             </view>
-            <text v-if="tool.description" class="rs-tool-desc">{{ tool.description }}</text>
+            <text v-if="toolDesc(tool)" class="rs-tool-desc">{{ toolDesc(tool) }}</text>
             <view class="rs-card-foot">
               <text class="rs-tool-state" :class="{ off: !tool.enabled || !tool.approved }">{{ toolState(tool) }}</text>
               <text v-if="tool.version" class="rs-time">v{{ tool.version }}</text>
@@ -187,7 +187,7 @@
 import { LONG_TIMEOUT } from '../../lib/client.js'
 import { fileActionLabel } from '../../lib/files.js'
 import { relativeTime } from '../../lib/format.js'
-import { t } from '../../lib/i18n.js'
+import { t, getLocale } from '../../lib/i18n.js'
 import {
   applySystemBars,
   init,
@@ -537,6 +537,11 @@ export default {
       if (tool.enabled === false) return t('已停用')
       if (tool.approved !== true) return t('未批准，运行前需要你确认')
       return t('可用')
+    },
+    /** 说明：中文界面优先用电脑端带来的中文说明，没有就显示原文。 */
+    toolDesc(tool) {
+      if (getLocale() === 'en') return tool.description || ''
+      return tool.descriptionZh || tool.description || ''
     },
     copyLink(link) {
       const url = String(link?.url || '')

@@ -146,6 +146,22 @@ test('工具条目补上风险与来源标签，丢弃无名条目', () => {
   assert.equal(tools[1].sourceLabel, '自写')
   assert.equal(tools[1].approved, false)
   assert.equal(tools[1].version, 2)
+  // 没有中文说明的条目给空串，页面回落到英文原文，不会出现 undefined。
+  assert.equal(tools[0].descriptionZh, '')
+})
+
+test('中文说明随工具条目一起带到手机端', () => {
+  const tools = normalizeSessionTools([
+    {
+      name: 'read_file',
+      description: 'Read a UTF-8 text file from the workspace.',
+      descriptionZh: '读取工作区里的文本文件，可指定行区间；改文件前先读一遍。',
+      risk: 'read',
+      source: 'builtin'
+    }
+  ])
+  assert.equal(tools[0].descriptionZh, '读取工作区里的文本文件，可指定行区间；改文件前先读一遍。')
+  assert.match(tools[0].description, /Read a UTF-8/)
 })
 
 test('未知风险等级按最保守的命令处理', () => {
