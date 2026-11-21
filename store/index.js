@@ -13,6 +13,13 @@ import {
   filterKnowledgePairs,
   searchLocalKnowledge
 } from '../lib/knowledge.js'
+import {
+  extractSessionLinks,
+  normalizeSessionLinks,
+  normalizeSessionTools,
+  SESSION_LINK_LIMIT,
+  SESSION_TOOL_LIMIT
+} from '../lib/session-resources.js'
 import { mergeSessionsSnapshot } from '../lib/live-state.js'
 import { createKeyPair, exportKey } from '../lib/pair-crypto.js'
 import { joinPairing } from '../lib/pairing.js'
@@ -2152,6 +2159,80 @@ export async function loadSessionKnowledge(sessionId, options = {}) {
     total: all.length,
     hasMore: all.length > pairs.length,
     source: 'cache'
+  }
+}
+
+/**
+ * 读取某个会话里出现过的链接（任务卡片上的「链接」预览）。
+ *
+ * 只读会话正文，不访问网络：电脑端返回它整理好的列表；旧版电脑端没有
+ * `sessions.links`、或电脑离线时，从本机缓存的会话正文就地提取。
+ */
+export async function loadSessionLinks(sessionId, options = {}) {
+  const id = String(sessionId || store.currentSessionId || '')
+  if (!id) return { links: [], total: 0, hasMore: false, source: 'none' }
+  const limit = Math.max(1, Math.min(SESSION_LINK_LIMIT, Math.round(Number(options.limit)) || SESSION_LINK_LIMIT))
+  const online = Boolean(client?.isConnected()) && store.agentOnline
+  if (online) {
+    try {
+      const data = await client.request('sessions.links', { sessionId: id, limit })
+      if (Array.isArray(data?.links)) {
+        const links = normalizeSessionLinks(data.links, limit)
+        const total = Number(data.total) || links.length
+        return { links, total, hasMore: data.hasMore === true || total > links.length, source: 'pc' }
+      }
+    } catch {
+      // 旧版电脑端没有这个方法，或这中间断线：退回本机缓存。
+    }
+  }
+  const liveMessages =
+    store.currentSessionId === id && Array.isArray(store.messages) ? store.messages : []
+  const cachedAll = loadHistoryCacheAll(storageDeviceId())
+  const entry = cachedAll && typeof cachedAll === 'object' ? cachedAll[id] : null
+  const cachedMessages = entry && Array.isArray(entry.messages) ? entry.messages : []
+  const messages = cachedMessages.length >= liveMessages.length ? cachedMessages : liveMessages
+  const links = extractSessionLinks(messages, limit)
+  return { links, total: links.length, hasMore: false, source: 'cache' }
+}
+
+/**
+ * 读取这个任务的工作区在一次运行里会拿到哪些工具。
+ *
+ * 工具清单只在电脑端成立（取决于 shell 模式、学习策略、MCP 开关和工作区里
+ * 自写的工具），手机本地无法可靠重建，所以电脑离线时返回空列表由页面提示。
+ */
+export async function loadSessionTools(sessionId, options = {}) {
+  const id = String(sessionId || store.currentSessionId || '')
+  if (!id) return { tools: [], total: 0, hasMore: false, mcpEnabled: false, source: 'none' }
+  const limit = Math.max(
+    1,
+    Math.min(SESSION_TOOL_LIMIT, Math.round(Number(options.limit)) || SESSION_TOOL_LIMIT)
+  )
+  const online = Boolean(client?.isConnected()) && store.agentOnline
+  if (!online) return { tools: [], total: 0, hasMore: false, mcpEnabled: false, source: 'offline' }
+  try {
+    const data = await client.request('sessions.tools', { sessionId: id, limit }, LONG_TIMEOUT)
+    const tools = normalizeSessionTools(data?.tools, limit)
+    const total = Number(data?.total) || tools.length
+    return {
+      tools,
+      total,
+      hasMore: data?.hasMore === true || total > tools.length,
+      mcpEnabled: data?.mcpEnabled === true,
+      source: 'pc'
+    }
+  } catch (error) {
+    // 旧版电脑端没有 sessions.tools：明确告诉用户需要升级，而不是空列表装死。
+    const message = String(error?.message || '')
+    const unsupported = /unknown method|unsupported|not found|方法不存在|不支持/i.test(message)
+    return {
+      tools: [],
+      total: 0,
+      hasMore: false,
+      mcpEnabled: false,
+      source: unsupported ? 'unsupported' : 'error',
+      message
+    }
   }
 }
 
