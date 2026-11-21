@@ -9,6 +9,8 @@
 
 **Website & installers:** <https://pilot.medpilot.cc/#app-download> — screenshots, demo video and every download.
 
+**Changelog:** [CHANGELOG.md](CHANGELOG.md) — what changed in each release, newest first.
+
 Pilot Link is the phone side of [Pilot](https://github.com/yunjianmanbu/pilot): an Android app
 (uni-app; the same sources also build for H5) that connects to Pilot running on your computer, so you
 can drive the agent from your phone — read sessions, continue conversations, approve tool calls,
