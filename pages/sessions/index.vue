@@ -214,6 +214,14 @@
                   class="chip session-link knowledge"
                   @click.stop="openSessionKnowledge(session)"
                 >{{ t('知识') }}</text>
+                <text
+                  class="chip session-link link"
+                  @click.stop="openSessionLinks(session)"
+                >{{ t('链接') }}</text>
+                <text
+                  class="chip session-link tool"
+                  @click.stop="openSessionTools(session)"
+                >{{ t('工具') }}</text>
               </view>
             </view>
             <text class="chevron">›</text>
@@ -1176,6 +1184,22 @@ export default {
       if (this.sessionPress?.clickBlocked()) return
       uni.navigateTo({
         url: `/pages/knowledge/index?sessionId=${encodeURIComponent(session.id)}&from=sessions`
+      })
+    },
+    /** 行内快捷入口：这个任务里出现过的链接，直接落在链接分类。 */
+    openSessionLinks(session) {
+      if (!session?.id) return
+      if (this.sessionPress?.clickBlocked()) return
+      uni.navigateTo({
+        url: `/pages/session-resources/index?sessionId=${encodeURIComponent(session.id)}&tab=links`
+      })
+    },
+    /** 行内快捷入口：这个任务可用的工具，同一个页面的工具分类。 */
+    openSessionTools(session) {
+      if (!session?.id) return
+      if (this.sessionPress?.clickBlocked()) return
+      uni.navigateTo({
+        url: `/pages/session-resources/index?sessionId=${encodeURIComponent(session.id)}&tab=tools`
       })
     },
     /** 汇总条点一下：直接打开最近结束、还没看过的那个会话。 */
@@ -2175,6 +2199,7 @@ export default {
 .session-links {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12rpx;
   margin-top: 12rpx;
 }
@@ -2185,6 +2210,15 @@ export default {
 .session-link.knowledge {
   color: var(--knowledge);
   background: var(--knowledge-soft);
+}
+/* 链接用琥珀提示「离开应用去外部」，工具用紫与桌面端工具徽章一致。 */
+.session-link.link {
+  color: var(--pause);
+  background: var(--pause-soft);
+}
+.session-link.tool {
+  color: var(--review);
+  background: var(--review-soft);
 }
 .session-plan-row {
   margin-top: 8rpx;

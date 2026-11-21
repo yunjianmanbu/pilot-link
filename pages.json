@@ -56,6 +56,17 @@
       }
     },
     {
+      "path": "pages/session-resources/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
       "path": "pages/settings/index",
       "style": {
         "navigationStyle": "custom",

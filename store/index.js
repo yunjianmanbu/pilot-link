@@ -2179,7 +2179,9 @@ export async function loadSessionLinks(sessionId, options = {}) {
       if (Array.isArray(data?.links)) {
         const links = normalizeSessionLinks(data.links, limit)
         const total = Number(data.total) || links.length
-        return { links, total, hasMore: data.hasMore === true || total > links.length, source: 'pc' }
+        // 「还有更多」按电脑端给出的总数与本次上限比较：用 links.length 比较会在
+        // 有条目被过滤时误报成「只显示最近 0 条」。
+        return { links, total, hasMore: data.hasMore === true || total > limit, source: 'pc' }
       }
     } catch {
       // 旧版电脑端没有这个方法，或这中间断线：退回本机缓存。

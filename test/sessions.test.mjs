@@ -192,15 +192,28 @@ test('会话行同时显示运行中和排队数量，并汇总全屏排队总�
   assert.ok(total.includes('this.pendingFor(session.id)'), '排队总数没有复用 pendingFor 的口径')
 })
 
-test('会话行有文件和知识快捷入口，点击直达该会话对应页', () => {
+test('会话行有文件、知识、链接、工具四个快捷入口，点击直达对应页', () => {
   const rowStart = sessions.indexOf('class="session-links"')
   assert.notEqual(rowStart, -1, '会话行缺少快捷入口区')
   const row = sessions.slice(rowStart, sessions.indexOf('class="chevron"', rowStart))
   // @click.stop：点快捷入口不能顺带打开会话。
   assert.ok(row.includes('@click.stop="openSessionFiles(session)"'), '文件入口缺少点击绑定')
   assert.ok(row.includes('@click.stop="openSessionKnowledge(session)"'), '知识入口缺少点击绑定')
+  assert.ok(row.includes('@click.stop="openSessionLinks(session)"'), '链接入口缺少点击绑定')
+  assert.ok(row.includes('@click.stop="openSessionTools(session)"'), '工具入口缺少点击绑定')
   assert.ok(row.includes("t('文件')"), '文件入口缺少文案')
   assert.ok(row.includes("t('知识')"), '知识入口缺少文案')
+  assert.ok(row.includes("t('链接')"), '链接入口缺少文案')
+  assert.ok(row.includes("t('工具')"), '工具入口缺少文案')
+  // 顺序：链接与工具排在知识后面。
+  const order = ['openSessionFiles', 'openSessionKnowledge', 'openSessionLinks', 'openSessionTools']
+  const positions = order.map((name) => row.indexOf(`@click.stop="${name}(session)"`))
+  for (let index = 1; index < positions.length; index += 1) {
+    assert.ok(
+      positions[index] > positions[index - 1],
+      `${order[index]} 应排在 ${order[index - 1]} 后面`
+    )
+  }
   // 语义色仍走全局 token，不在页面里新造颜色值。
   const cssStart = sessions.indexOf('.session-link.file {')
   assert.notEqual(cssStart, -1, '缺少 .session-link.file 样式')
@@ -228,6 +241,34 @@ test('会话行有文件和知识快捷入口，点击直达该会话对应页',
     !knowledgeBody.includes('selectSession('),
     '知识入口不应切换当前会话'
   )
+
+  for (const [name, tab] of [
+    ['openSessionLinks', 'links'],
+    ['openSessionTools', 'tools']
+  ]) {
+    const start = sessions.indexOf(`    ${name}(session) {`)
+    assert.notEqual(start, -1, `缺少 ${name}`)
+    const body = sessions.slice(start, sessions.indexOf('\n    },', start))
+    assert.ok(
+      body.includes('/pages/session-resources/index?sessionId='),
+      `${name} 没有带 sessionId 跳转`
+    )
+    assert.ok(body.includes(`tab=${tab}`), `${name} 没有指定 ${tab} 分类`)
+    assert.ok(!body.includes('selectSession('), `${name} 不应切换当前会话`)
+  }
+
+  // 四个入口各用自己的语义色，且都走全局 token。
+  for (const [selector, token] of [
+    ['.session-link.file {', '--file-soft'],
+    ['.session-link.knowledge {', '--knowledge-soft'],
+    ['.session-link.link {', '--pause-soft'],
+    ['.session-link.tool {', '--review-soft']
+  ]) {
+    const start = sessions.indexOf(selector)
+    assert.notEqual(start, -1, `缺少 ${selector} 样式`)
+    const block = sessions.slice(start, sessions.indexOf('}', start))
+    assert.match(block, new RegExp(`var\\(${token}\\)`), `${selector} 底色没有用 ${token}`)
+  }
 })
 
 test('文件页优先按 URL 里的会话 id 取任务名和工作目录', () => {

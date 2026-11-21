@@ -1,5 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import {
   extractSessionLinks,
@@ -45,6 +48,34 @@ test('host 去 www，非法地址返回空串', () => {
   assert.equal(hostOf('https://www.github.com/a'), 'github.com')
   assert.equal(hostOf('https://docs.rs/x'), 'docs.rs')
   assert.equal(hostOf('不是链接'), '')
+  // 端口保留、userinfo 不计入主机，与 URL.host 的口径一致。
+  assert.equal(hostOf('https://x.com:8443/a'), 'x.com:8443')
+  assert.equal(hostOf('https://user:pw@y.com/a'), 'y.com')
+  assert.equal(hostOf('https://'), '')
+})
+
+// uni-app 的 App 端跑在 V8 / JSCore 里，没有 WHATWG URL。
+// 以前 hostOf 直接 `new URL()` 抛错，逐条链接都被丢弃：
+// 手机上显示「31 条链接 · 只显示最近 0 条」而列表空白。
+test('App 逻辑层没有全局 URL 时，链接仍然解析得出来', () => {
+  const saved = globalThis.URL
+  globalThis.URL = undefined
+  try {
+    assert.equal(hostOf('https://www.github.com/a'), 'github.com')
+    const links = normalizeSessionLinks([
+      { url: 'https://x.com/a', host: 'x.com' },
+      { url: 'https://y.com/b' }
+    ])
+    assert.deepEqual(
+      links.map((link) => link.host),
+      ['x.com', 'y.com']
+    )
+    const local = extractSessionLinks([user('m1', '看 https://z.com/a 的说明')])
+    assert.equal(local.length, 1)
+    assert.equal(local[0].host, 'z.com')
+  } finally {
+    globalThis.URL = saved
+  }
 })
 
 test('按最后出现位置从新到旧，同一链接只出现一次并累计次数', () => {
@@ -128,4 +159,51 @@ test('超长描述被截断以免撑爆一帧', () => {
   const [tool] = normalizeSessionTools([{ name: 'x', description: 'a'.repeat(1000) }])
   assert.equal(tool.description.length, 321)
   assert.ok(tool.description.endsWith('…'))
+})
+
+// 页面上的风险/来源标签必须与 lib 的口径一致，否则同一个工具在两个地方叫法不同。
+test('预览页的风险与来源标签和 lib 口径一致', () => {
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '..', 'pages', 'session-resources', 'index.vue'),
+    'utf8'
+  )
+  for (const [method, label, values] of [
+    ['riskText', toolRiskLabel, ['read', 'write', 'exec', 'control']],
+    ['sourceText', toolSourceLabel, ['builtin', 'control', 'mcp', 'dynamic']]
+  ]) {
+    const start = source.indexOf(`    ${method}(tool) {`)
+    assert.notEqual(start, -1, `缺少 ${method}`)
+    const body = source.slice(start, source.indexOf('\n    },', start))
+    for (const value of values) {
+      const match = body.match(new RegExp(`tool\\.${method === 'riskText' ? 'risk' : 'source'} === '${value}'\\) return t\\('([^']+)'\\)`))
+      assert.ok(match, `${method} 没有处理 ${value}`)
+      assert.equal(match[1], label(value), `${method} 对 ${value} 的标签与 lib 不一致`)
+    }
+  }
+})
+
+// 任务卡片上的四个入口指向同一页的不同分类，页面必须认得 tab 参数。
+test('会话资源页注册并识别链接、工具、知识库、文件四个分类', () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+  const pages = JSON.parse(readFileSync(join(root, 'pages.json'), 'utf8'))
+  assert.ok(
+    pages.pages.some((page) => page.path === 'pages/session-resources/index'),
+    'pages.json 没有注册会话资源页'
+  )
+  const page = readFileSync(join(root, 'pages', 'session-resources', 'index.vue'), 'utf8')
+  assert.ok(
+    page.includes("const TABS = ['links', 'tools', 'knowledge', 'files']"),
+    '页面没有声明四个分类'
+  )
+  assert.ok(
+    page.includes('TABS.includes(options?.tab) ? options.tab : \'links\''),
+    '页面没有按 tab 参数选择初始分类'
+  )
+  for (const tab of ['links', 'tools', 'knowledge', 'files']) {
+    assert.ok(page.includes(`setTab('${tab}')`), `缺少 ${tab} 分类的切换入口`)
+  }
+  // 知识库与文件有独立完整页面，从会话资源页带 sessionId 跳过去。
+  assert.ok(page.includes('/pages/knowledge/index?sessionId='), '知识库没有带上会话 ID 跳转')
+  assert.ok(page.includes('/pages/files/index?sessionId='), '文件没有带上会话 ID 跳转')
+  assert.ok(page.includes("'/pages/session-resources/index") === false, '页面不应反向跳自己')
 })
