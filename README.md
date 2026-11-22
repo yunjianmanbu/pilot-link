@@ -19,6 +19,8 @@ manage the queue and scheduled work, and preview the files a session wrote.
 It is not a reskin of any chat console: the data layer implements Pilot's relay protocol and session
 model directly, while the UI keeps uni-app's interaction structure.
 
+![Pilot Link in motion: pair by QR, watch the run live, approve by risk level, read the files](docs/social/en/demo.gif)
+
 ![Pair once: four steps, no account](docs/diagrams/en/pairing.png)
 
 | Pair with a QR code | Session list and resume | Live run with inline approvals |
