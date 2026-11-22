@@ -207,21 +207,25 @@
               <!-- 行内快捷入口：不打开会话，直接进这个任务的文件或知识库。 -->
               <view class="session-links">
                 <text
-                  class="chip session-link file"
+                  class="chip session-link"
                   @click.stop="openSessionFiles(session)"
                 >{{ t('文件') }}</text>
                 <text
-                  class="chip session-link knowledge"
+                  class="chip session-link"
                   @click.stop="openSessionKnowledge(session)"
                 >{{ t('知识') }}</text>
                 <text
-                  class="chip session-link link"
+                  class="chip session-link"
                   @click.stop="openSessionLinks(session)"
                 >{{ t('链接') }}</text>
                 <text
-                  class="chip session-link tool"
+                  class="chip session-link"
                   @click.stop="openSessionTools(session)"
                 >{{ t('工具') }}</text>
+                <text
+                  class="chip session-link"
+                  @click.stop="openSessionMemory(session)"
+                >{{ t('记忆') }}</text>
               </view>
             </view>
             <text class="chevron">›</text>
@@ -1151,7 +1155,7 @@ export default {
       if (this.checkingUpdate) return
       this.checkingUpdate = true
       try {
-        // manual 模式：跳过 6 小时节流，总会请求并把结果反馈给用户。
+        // manual 模式：跳过静默节流，总会请求并把结果反馈给用户。
         await checkAndPromptUpdate({ manual: true })
       } finally {
         this.checkingUpdate = false
@@ -1186,20 +1190,28 @@ export default {
         url: `/pages/knowledge/index?sessionId=${encodeURIComponent(session.id)}&from=sessions`
       })
     },
-    /** 行内快捷入口：这个任务里出现过的链接，直接落在链接分类。 */
+    /** 行内快捷入口：这个任务里出现过的链接，进独立的链接页。 */
     openSessionLinks(session) {
       if (!session?.id) return
       if (this.sessionPress?.clickBlocked()) return
       uni.navigateTo({
-        url: `/pages/session-resources/index?sessionId=${encodeURIComponent(session.id)}&tab=links`
+        url: `/pages/session-links/index?sessionId=${encodeURIComponent(session.id)}`
       })
     },
-    /** 行内快捷入口：这个任务可用的工具，同一个页面的工具分类。 */
+    /** 行内快捷入口：这个任务可用的工具，进独立的工具页。 */
     openSessionTools(session) {
       if (!session?.id) return
       if (this.sessionPress?.clickBlocked()) return
       uni.navigateTo({
-        url: `/pages/session-resources/index?sessionId=${encodeURIComponent(session.id)}&tab=tools`
+        url: `/pages/session-tools/index?sessionId=${encodeURIComponent(session.id)}`
+      })
+    },
+    /** 行内快捷入口：这个任务用到的项目记忆，进独立的记忆页。 */
+    openSessionMemory(session) {
+      if (!session?.id) return
+      if (this.sessionPress?.clickBlocked()) return
+      uni.navigateTo({
+        url: `/pages/session-memory/index?sessionId=${encodeURIComponent(session.id)}`
       })
     },
     /** 汇总条点一下：直接打开最近结束、还没看过的那个会话。 */
@@ -2195,7 +2207,11 @@ export default {
   color: var(--dim);
   font-size: calc(22rpx * var(--font-scale));
 }
-/* 行内快捷入口：语义色只改文字与底色，尺寸仍走 .chip 的全局 token。 */
+/* 行内快捷入口：五个入口同一套胶囊样式，字号/高度/圆角全走 .chip；
+   这里只给底色和描边，不再按分类上语义色——「记忆」以前是唯一一个
+   用主色的按钮，看起来像另一档次的操作。
+   底色必须比会话卡片（--surface）高一档：用 --surface-2 时和卡片只差
+   10 级亮度，深色下五颗按钮几乎糊在卡片上，看不出是按钮。 */
 .session-links {
   display: flex;
   align-items: center;
@@ -2203,22 +2219,21 @@ export default {
   gap: 12rpx;
   margin-top: 12rpx;
 }
-.session-link.file {
-  color: var(--file);
-  background: var(--file-soft);
+.session-link {
+  color: var(--text);
+  background: var(--surface-3);
+  border-color: var(--line);
+  /* 深色主题的 --line 只有 10% 白，1rpx 描边压在 --surface-3 上几乎看不出来，
+     按钮外形全靠底色差，低亮度屏上就糊成一片。补一圈内描边把边缘提亮，
+     不改主题变量（浅色主题下改成淡黑，同样不动 --line）。 */
+  box-shadow: inset 0 0 0 1rpx rgba(255, 255, 255, 0.16);
 }
-.session-link.knowledge {
-  color: var(--knowledge);
-  background: var(--knowledge-soft);
+.theme-light .session-link {
+  box-shadow: inset 0 0 0 1rpx rgba(0, 0, 0, 0.09);
 }
-/* 链接用琥珀提示「离开应用去外部」，工具用紫与桌面端工具徽章一致。 */
-.session-link.link {
-  color: var(--pause);
-  background: var(--pause-soft);
-}
-.session-link.tool {
-  color: var(--review);
-  background: var(--review-soft);
+.session-link:active {
+  color: var(--accent-soft);
+  border-color: var(--accent-soft);
 }
 .session-plan-row {
   margin-top: 8rpx;

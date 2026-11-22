@@ -67,6 +67,50 @@
       }
     },
     {
+      "path": "pages/web-preview/index",
+      "style": {
+        "navigationBarTitleText": "网页预览",
+        "navigationBarBackgroundColor": "#111111",
+        "navigationBarTextStyle": "white",
+        "app-plus": {
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/session-links/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/session-tools/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
+      "path": "pages/session-memory/index",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#000000",
+        "app-plus": {
+          "titleNView": false,
+          "bounce": "none"
+        }
+      }
+    },
+    {
       "path": "pages/settings/index",
       "style": {
         "navigationStyle": "custom",

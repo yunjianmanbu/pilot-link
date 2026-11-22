@@ -15,8 +15,11 @@ import {
   htmlPreviewDocument,
   isBrowserFileScope,
   isHtmlName,
+  isWebLink,
   localFilePathFor,
   openLocalFile,
+  openExternalUrl,
+  openWebPreview,
   readRemoteBytes,
   readRemoteText,
   safeFileName,
@@ -356,6 +359,121 @@ test('网页版打开文档走下载，图片走新标签', async () => {
   const image = await openLocalFile('blob:pilot/2', 'shot.png', { window: web })
   assert.equal(image, true)
   assert.deepEqual(opened, ['blob:pilot/2'])
+})
+
+/* ------------------------------------------------------------------ */
+/* 链接识别：App 逻辑层没有 `URL` 全局对象                              */
+/* ------------------------------------------------------------------ */
+
+/** 临时拿掉 `URL`，模拟 App 端逻辑层（V8 / JSCore 里没有这个全局）。 */
+async function withoutGlobalUrl(run) {
+  const saved = globalThis.URL
+  // eslint-disable-next-line no-global-assign
+  globalThis.URL = undefined
+  try {
+    return await run()
+  } finally {
+    globalThis.URL = saved
+  }
+}
+
+test('没有 URL 全局时也能认出网页链接', async () => {
+  await withoutGlobalUrl(() => {
+    assert.equal(isWebLink('https://example.com/a?b=1#c'), true)
+    assert.equal(isWebLink('  http://127.0.0.1:8080/path  '), true)
+    assert.equal(isWebLink('https://例子.测试/路径'), true)
+  })
+})
+
+test('把非网页地址挡在外面', async () => {
+  await withoutGlobalUrl(() => {
+    assert.equal(isWebLink('javascript:alert(1)'), false)
+    assert.equal(isWebLink('file:///etc/passwd'), false)
+    assert.equal(isWebLink('www.example.com'), false)
+    assert.equal(isWebLink('https://'), false)
+    assert.equal(isWebLink(''), false)
+    assert.equal(isWebLink('https://exa mple.com'), false)
+  })
+})
+
+test('没有 URL 全局时外置浏览器能拿到地址', async () => {
+  const opened = []
+  const plus = {
+    runtime: {
+      openURL: (url, fail) => {
+        opened.push(url)
+        void fail
+      },
+      isStreamApp: false
+    }
+  }
+  await withoutGlobalUrl(async () => {
+    await openExternalUrl('https://example.com/doc', { plus, window: null })
+    await openExternalUrl('mailto:a@b.com', { plus, window: null })
+  })
+  assert.deepEqual(opened, ['https://example.com/doc', 'mailto:a@b.com'])
+})
+
+test('没有 URL 全局时内置预览仍能建窗口，标题取域名', async () => {
+  const created = []
+  const plus = {
+    webview: {
+      create: (url, id, style) => {
+        created.push({ url, id, title: style?.titleNView?.titleText })
+        return { show: () => {} }
+      },
+      getWebviewById: () => null
+    }
+  }
+  await withoutGlobalUrl(async () => {
+    await openWebPreview('https://example.com/a/b', '', { plus, window: null })
+  })
+  assert.equal(created.length, 1)
+  assert.equal(created[0].url, 'https://example.com/a/b')
+  assert.equal(created[0].title, 'example.com')
+})
+
+test('内置预览优先跳页面栈里的预览页，返回才会回到原会话', async () => {
+  const navigations = []
+  const created = []
+  const plus = {
+    webview: {
+      create: (url, id) => {
+        created.push({ url, id })
+        return { show: () => {} }
+      },
+      getWebviewById: () => null
+    }
+  }
+  const uni = {
+    navigateTo: ({ url, success }) => {
+      navigations.push(url)
+      success?.()
+    }
+  }
+  await openWebPreview('https://example.com/a/b', '示例', { plus, uni, window: null })
+  assert.equal(navigations.length, 1, '没有跳预览页')
+  assert.equal(created.length, 0, '页面栈可用时不该再建游离窗口')
+  assert.match(
+    navigations[0],
+    /^\/pages\/web-preview\/index\?url=https%3A%2F%2Fexample\.com%2Fa%2Fb&title=/
+  )
+})
+
+test('预览页打不开时回退到游离窗口，不会什么都不发生', async () => {
+  const created = []
+  const plus = {
+    webview: {
+      create: (url) => {
+        created.push(url)
+        return { show: () => {} }
+      },
+      getWebviewById: () => null
+    }
+  }
+  const uni = { navigateTo: ({ fail }) => fail?.(new Error('page not found')) }
+  await openWebPreview('https://example.com/x', '', { plus, uni, window: null })
+  assert.deepEqual(created, ['https://example.com/x'])
 })
 
 test('既没有 plus.io 也没有浏览器时，仍给出明确错误', async () => {

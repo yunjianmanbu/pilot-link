@@ -3,20 +3,16 @@ import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { readClientTree } from './client-source.mjs'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
-const CLIENT = path.join(ROOT, '..', 'pilot')
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
-const readClient = (relative) => {
-  const abs = path.join(CLIENT, relative)
-  return fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : null
-}
 
 const page = read('pages/connect-phone/index.vue')
 const pages = read('pages.json')
 const settings = read('pages/settings/index.vue')
 const store = read('store/index.js')
-const protocol = readClient('src/main/companion/server.ts')
+const protocol = readClientTree('src/main/companion')
 const locale = read('lib/locale-en.js')
 
 

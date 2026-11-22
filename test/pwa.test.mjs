@@ -96,18 +96,20 @@ test('Service Worker 存在且只接管静态资源', () => {
   assert.match(source, /skipWaiting/, '不 skipWaiting 会让新版本等到用户关页面才生效')
   assert.match(source, /clients\.claim/, '不 claim 时首次安装的页面不受控')
   assert.match(source, /caches\.keys\(\)[\s\S]*?caches\.delete/, '旧版本缓存不会被清掉')
-  // 业务数据走 WebSocket，SW 不该缓存跨域请求（中继、下载站）。
   assert.match(source, /url\.origin !== self\.location\.origin/)
   // 预缓存清单只能由构建脚本注入：写死文件名在哈希变动后会全部落空。
   assert.match(source, /@precache-assets/)
   assert.match(source, /const ASSET_PRECACHE = \[\]/, '源模板里清单应该是空的，由脚本填')
 })
 
-/** 用假 caches / fetch 跑一遍 SW 的 fetch 分支，确认跨域请求真的被放行。 */
-function runServiceWorker() {
+/** 用假 caches / fetch 跑一遍 SW，确认缓存换代与放行逻辑。 */
+const VERSION_DECL = /const VERSION = '[^']*'/
+function runServiceWorker(options = {}) {
   const listeners = new Map()
   const added = []
+  const deleted = []
   const handlers = []
+  const fetchCalls = []
   const self = {
     location: { origin: 'https://pilot.medpilot.cc' },
     addEventListener(type, handler) {
@@ -117,42 +119,103 @@ function runServiceWorker() {
     clients: { claim: async () => {} }
   }
   const cacheStore = new Map()
+  /* 和真实 Cache 一样按绝对 URL 存：SW 里 `cache.match('./')` 相对的是 sw.js 自已。 */
+  const BASE = 'https://pilot.medpilot.cc/app/sw.js'
+  const resolveKey = (request) => {
+    const raw = typeof request === 'string' ? request : String(request.url ?? request)
+    try {
+      return new URL(raw, BASE).toString()
+    } catch {
+      return raw
+    }
+  }
+  for (const name of options.caches || []) cacheStore.set(name, new Map())
+  for (const [name, entries] of Object.entries(options.cacheEntries || {})) {
+    const store = new Map()
+    for (const [url, response] of Object.entries(entries)) store.set(resolveKey(url), response)
+    cacheStore.set(name, store)
+  }
   const caches = {
     open: async (name) => {
       if (!cacheStore.has(name)) cacheStore.set(name, new Map())
       const store = cacheStore.get(name)
       return {
         add: async (request) => {
-          added.push(String(request.url ?? request))
+          // 记原样（相对路径），断言看的就是注入进去的那串清单。
+          added.push(typeof request === 'string' ? request : String(request.url ?? request))
         },
         put: async (request, response) => {
-          store.set(String(request.url), response)
+          store.set(resolveKey(request), response)
         },
-        match: async (request) => store.get(String(request.url)) || null
+        match: async (request) => store.get(resolveKey(request)) || null
       }
     },
-    keys: async () => [...cacheStore.keys()]
+    keys: async () => [...cacheStore.keys()],
+    delete: async (name) => {
+      deleted.push(name)
+      return cacheStore.delete(name)
+    }
+  }
+  /* 网络默认 200；要复现 304 白屏就传 network: async () => ({ ok: false, status: 304 })。 */
+  const network = options.network || (async () => ({ ok: true, status: 200, clone: () => ({}) }))
+  class FakeRequest {
+    constructor(input, init) {
+      this.url = typeof input === 'string' ? input : input.url
+      this.headers = new Headers((init && init.headers) || (input && input.headers) || {})
+      this.cache = init && init.cache
+      this.method = (init && init.method) || 'GET'
+    }
+  }
+  class FakeResponse {
+    constructor(body, init) {
+      this.body = body
+      this.status = init && init.status
+    }
+    static error() {
+      return { __networkError: true, status: 0 }
+    }
   }
   const context = vm.createContext({
     self,
     caches,
-    fetch: async () => ({ ok: true, clone: () => ({}) }),
-    Request: class {
-      constructor(url) {
-        this.url = url
-      }
+    Headers,
+    fetch: async (input, init) => {
+      fetchCalls.push({ input, init })
+      return network(input, init)
     },
-    Response: class {},
+    Request: FakeRequest,
+    Response: FakeResponse,
     URL,
     Promise,
     console
   })
-  vm.runInContext(readFileSync(join(PWA_DIR, 'sw.js'), 'utf8'), context)
-  return { listeners, added, handlers }
+  // const 声明不会挂到 context 上，显式导出来，测试才能用真实指纹而不是硬编码。
+  // options.version 用来模拟构建产物里的带指纹缓存名（模板态是纯前缀，BUILD 为空）。
+  let source = readFileSync(join(PWA_DIR, 'sw.js'), 'utf8')
+  if (options.version) {
+    source = source.replace(VERSION_DECL, `const VERSION = '${options.version}'`)
+  }
+  vm.runInContext(
+    source + '\n;globalThis.__sw = { VERSION, BUILD, SHELL_CACHE, ASSET_CACHE }',
+    context
+  )
+  return { listeners, added, handlers, deleted, fetchCalls, sw: context.__sw }
 }
 
-test('SW 安装时预缓存壳文件，activate 时清掉旧版本', async () => {
-  const { listeners, added } = runServiceWorker()
+/** 触发一次 fetch 事件，拿到 SW 实际返回的响应。 */
+async function runFetch(worker, request) {
+  const handler = worker.listeners.get('fetch')
+  assert.ok(handler, '没有 fetch 监听')
+  let pending = null
+  handler({ request, respondWith: (promise) => (pending = promise) })
+  assert.ok(pending, '这个请求没有被 SW 接管')
+  return pending
+}
+
+test('SW 安装时预缓存壳文件；换代时不会在 activate 里删掉旧缓存', async () => {
+  const { listeners, added, deleted } = runServiceWorker({
+    caches: ['pilot-link-pwa-v2-0000ffff-shell', 'pilot-link-pwa-v2-0000ffff-assets']
+  })
   const install = listeners.get('install')
   assert.ok(install, '没有 install 监听')
   let pending = null
@@ -164,6 +227,40 @@ test('SW 安装时预缓存壳文件，activate 时清掉旧版本', async () =>
   let activated = null
   listeners.get('activate')({ waitUntil: (promise) => (activated = promise) })
   await activated
+  /*
+   * 白屏回归点：页面可能还在用上一代的 index.html，activate 就把旧缓存删掉，
+   * 那份 HTML 引用的带哈希资源再也取不回来。清理必须等页面确认本版本后再做。
+   */
+  assert.deepEqual(deleted, [], 'activate 阶段不该删任何缓存')
+})
+
+test('SW 只在页面确认本版本构建后才回收上一代缓存', async () => {
+  // 旧版本指纹必须是另一个：与当前 VERSION 同名的缓存属于本版本，永远不删。
+  const stale = ['pilot-link-pwa-v2-1111aaaa-shell', 'pilot-link-pwa-v2-1111aaaa-assets']
+
+  // 页面加载的是旧构建：清缓存会把旧 HTML 引用的资源一并弄丢，必须拒绝。
+  const first = runServiceWorker({ caches: [...stale], version: 'pilot-link-pwa-v2-0000ffff' })
+  const message = first.listeners.get('message')
+  assert.ok(message, '没有 message 监听，页面无法确认构建')
+  const send = (worker, build) => {
+    const handler = worker.listeners.get('message')
+    let pending = null
+    handler({ data: { type: 'pilot-page-ready', build }, waitUntil: (p) => (pending = p) })
+    return pending
+  }
+  await send(first, 'deadbeef')
+  assert.deepEqual(first.deleted, [], '构建指纹不匹配时不能清缓存')
+
+  // 页面确认自己就是本版本：只回收自己家（pilot-link-pwa-）的旧版本缓存。
+  const mine = first.sw.SHELL_CACHE
+  const second = runServiceWorker({
+    caches: [...stale, mine, 'other-app-cache', 'pilot-link-pwa-v2-1111aaaa-other'],
+    version: first.sw.VERSION
+  })
+  await send(second, second.sw.BUILD)
+  assert.deepEqual(second.deleted.sort(), [...stale, 'pilot-link-pwa-v2-1111aaaa-other'].sort())
+  assert.ok(!second.deleted.includes('other-app-cache'), '不能误删同源其它应用的缓存')
+  assert.ok(!second.deleted.includes(second.sw.SHELL_CACHE), '本版本的缓存不能被删')
 })
 
 test('SW 对跨域请求与 POST 完全不介入', () => {
@@ -185,6 +282,50 @@ test('SW 对跨域请求与 POST 完全不介入', () => {
     respondWith: (promise) => events.push(typeof promise?.then)
   })
   assert.deepEqual(events, ['function'], '构建产物应该走 cache-first')
+})
+
+test('导航拿到 304 时不能当页面交给浏览器，要退回缓存里的壳', async () => {
+  // 复现 iOS 白屏：Safari 在 SW 里发导航会带 If-None-Match，服务器回 304 无响应体。
+  const worker = runServiceWorker({
+    version: 'pilot-link-pwa-v2-deadbeef',
+    cacheEntries: {
+      'pilot-link-pwa-v2-deadbeef-shell': { './': { ok: true, status: 200, body: 'SHELL' } }
+    },
+    network: async () => ({ ok: false, status: 304 })
+  })
+  const response = await runFetch(worker, {
+    method: 'GET',
+    url: 'https://pilot.medpilot.cc/app/',
+    mode: 'navigate',
+    headers: new Headers({ 'if-none-match': 'W/"6b01a7"' })
+  })
+  assert.equal(response.body, 'SHELL', '304 必须回退到缓存里的壳，而不是空白页')
+  // 同时要求：发出的请求不带条件头、且绕开 HTTP 缓存，否则下一次还是 304。
+  assert.equal(worker.fetchCalls.length, 1)
+  const [{ input, init }] = worker.fetchCalls
+  assert.equal(init?.cache, 'no-store', 'SW 内的网络请求必须绕开 HTTP 缓存')
+  assert.equal(input.headers.get('if-none-match'), null, '条件头会把 304 带回来')
+})
+
+test('导航拿到 304 且没有缓存壳时返回可自恢的离线页', async () => {
+  const worker = runServiceWorker({ network: async () => ({ ok: false, status: 304 }) })
+  const response = await runFetch(worker, {
+    method: 'GET',
+    url: 'https://pilot.medpilot.cc/app/',
+    mode: 'navigate'
+  })
+  assert.equal(response.status, 503, '不能返回 304，也不能空白')
+  assert.match(response.body, /重试|重新加载/)
+})
+
+test('脚本 / 样式拿到非 2xx 时给网络错误，而不是无响应体的响应', async () => {
+  const worker = runServiceWorker({ network: async () => ({ ok: false, status: 304 }) })
+  const response = await runFetch(worker, {
+    method: 'GET',
+    url: 'https://pilot.medpilot.cc/app/assets/index-abc.js',
+    destination: 'script'
+  })
+  assert.equal(response.__networkError, true, '把 304 交给 script/link 等于加载失败')
 })
 
 test('main.js 只在 H5 注册 SW，且不在非安全上下文强注册', () => {
@@ -272,10 +413,12 @@ test('prepare-app-web.mjs 注入预缓存清单，并改掉 index.html 的绝对
   // HBuilderX 出的 H5 产物就是这种绝对路径写法
   writeFileSync(
     join(webDir, 'index.html'),
-    '<link rel="manifest" href="./manifest.webmanifest" />' +
+    '<html><head><meta charset="utf-8" />' +
+      '<link rel="manifest" href="./manifest.webmanifest" />' +
       '<meta name="theme-color" content="#000" />' +
       '<script src="/assets/index-abc123.js"></script>' +
-      '<link rel="stylesheet" href="/assets/index-def456.css" />'
+      '<link rel="stylesheet" href="/assets/index-def456.css" />' +
+      '</head><body><div id="app"></div></body></html>'
   )
 
   const run = (...extra) =>
@@ -297,6 +440,17 @@ test('prepare-app-web.mjs 注入预缓存清单，并改掉 index.html 的绝对
     assert.match(html, /src="\.\/assets\/index-abc123\.js"/, '绝对路径会让 /app/ 子路径部署 404')
     assert.match(html, /href="\.\/assets\/index-def456\.css"/)
 
+    // 首屏自愈：meta 指纹必须与 sw 的缓存名同源，否则页面永远确认不了构建。
+    const meta = /name="pilot-build" content="([^"]+)"/.exec(html)
+    assert.ok(meta, 'index.html 没注入首屏自愈块')
+    assert.match(sw, new RegExp(`const VERSION = 'pilot-link-pwa-v2-${meta[1]}'`))
+    assert.match(html, /pilot-page-ready/, '页面要能向 SW 确认自己已是新构建')
+    assert.match(html, /controllerchange/, '换代后不重载，旧页面会继续要已删除的资源')
+    assert.match(html, /reset=1/, '被坏缓存卡死时要有 ?reset=1 逃生入口')
+    assert.match(html, /彻底重置/, '连刷仍白屏时要能一键注销 SW 并清缓存')
+    assert.match(html, /caches\.delete/, '彻底重置必须真的清 Cache Storage')
+    assert.equal(html.match(/<!--pilot-pwa-guard-->/g).length, 1, '自愈块被重复注入')
+
     assert.equal(run('--check').status, 0, '刚铺完应该直接通过')
 
     // 重新构建 H5（文件名哈希变了）但忘了重跑脚本：--check 必须抦住
@@ -308,6 +462,8 @@ test('prepare-app-web.mjs 注入预缓存清单，并改掉 index.html 的绝对
     // 重跑一次就恢复正常
     assert.equal(run().status, 0)
     assert.equal(run('--check').status, 0)
+    // 重跑不能叠加第二份自愈块
+    assert.equal(readFileSync(join(webDir, 'index.html'), 'utf8').match(/<!--pilot-pwa-guard-->/g).length, 1)
   } finally {
     rmSync(work, { recursive: true, force: true })
   }

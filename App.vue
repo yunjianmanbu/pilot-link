@@ -61,7 +61,7 @@ export default {
     onAppShow()
     // 部分 ROM 在回到前台后会重置状态栏/导航栏配色，这里再对齐一次。
     applySystemBars()
-    // 等启动页跳转完成后再静默检查更新（内部做 6 小时节流，H5 自动跳过）。
+    // 等启动页跳转完成后再静默检查更新（内部做 30 分钟节流，H5 自动跳过）。
     if (!updateTimer) {
       updateTimer = setTimeout(() => {
         updateTimer = null

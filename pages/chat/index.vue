@@ -74,7 +74,21 @@
           @touchend="endMessagePress"
           @touchcancel="cancelMessagePress"
         >
-          <text v-for="part in item.parts" v-show="part.kind === 'text'" :key="part.key" class="msg-text" user-select>{{ part.text }}</text>
+          <view v-for="part in item.parts" v-show="part.kind === 'text'" :key="part.key" class="msg-text">
+            <template v-for="seg in part.segments" :key="seg.index">
+              <!-- 正文里的网址单独包一层，点一下进内置预览，长按出菜单。 -->
+              <text
+                v-if="seg.kind === 'link'"
+                class="msg-link"
+                user-select
+                @touchstart.stop
+                @click.stop="openInlineLink(seg.url)"
+                @longpress.stop="openInlineLinkMenu(seg.url)"
+                >{{ seg.text }}</text
+              >
+              <text v-else user-select>{{ seg.text }}</text>
+            </template>
+          </view>
           <view v-if="item.hasReference" class="user-refs">
             <text
               v-for="part in item.parts"
@@ -129,7 +143,20 @@
           </view>
         </view>
         <view v-else-if="item.role === 'system'" class="system-bubble" :class="{ error: item.error }">
-          <text class="msg-text" user-select>{{ partsText(item) }}</text>
+          <view class="msg-text">
+            <template v-for="seg in segmentsOf(item)" :key="seg.index">
+              <text
+                v-if="seg.kind === 'link'"
+                class="msg-link"
+                user-select
+                @touchstart.stop
+                @click.stop="openInlineLink(seg.url)"
+                @longpress.stop="openInlineLinkMenu(seg.url)"
+                >{{ seg.text }}</text
+              >
+              <text v-else user-select>{{ seg.text }}</text>
+            </template>
+          </view>
           <!-- 失败的运行可以原地重试；电脑端会沿用最后一条指令，不必重新打字。 -->
           <view v-if="item.error" class="system-retry" @click="retryFailedRun">
             <text class="system-retry-text">{{ retryBusy ? t('正在重试…') : t('重试') }}</text>
@@ -1041,7 +1068,7 @@ import { MODE_LABELS, messageTime, projectName, relativeTime, shortText, summari
 import { pickImageAttachments } from '../../lib/image.js'
 import { pickUploadFiles, uploadFileToWorkspace } from '../../lib/upload.js'
 import { renderMarkdown } from '../../lib/markdown.js'
-import { extractLinks, linkLabel } from '../../lib/media.js'
+import { extractLinks, linkLabel, linkifySegments } from '../../lib/media.js'
 import { modelOptionLabel } from '../../lib/model-label.js'
 import { planRows } from '../../lib/plan.js'
 import { createPressGesture } from '../../lib/press.js'
@@ -1194,6 +1221,9 @@ function buildParts(message, index, theme) {
         key,
         text,
         nodes: message.role === 'assistant' ? renderMarkdown(text, { theme }) : null,
+        // 用户 / 系统消息是纯文本，正文里的网址按片段切出来内联可点；
+        // 助手回复走 rich-text，点不到里面的节点，另用下面一行链接按钮。
+        segments: message.role === 'assistant' ? null : linkifySegments(text),
         // 助手回复里的网页链接会单独列一行按钮：rich-text 内部点不到链接。
         links:
           message.role === 'assistant'
@@ -1865,11 +1895,16 @@ export default {
       uni.onKeyboardHeightChange(this.keyboardBarsHandler)
     },
     shortText,
-    partsText(item) {
-      return item.parts
-        .filter((part) => part.kind === 'text')
-        .map((part) => part.text)
-        .join('\n')
+    // 系统消息把多个文本块拼成一行渲染，片段的 key 前面拼上块的 key。
+    segmentsOf(item) {
+      const rows = []
+      for (const part of item.parts) {
+        if (part.kind !== 'text') continue
+        if (rows.length) rows.push({ index: `${part.key}-sep`, kind: 'text', text: '\n' })
+        const segments = part.segments || [{ index: 0, kind: 'text', text: part.text || '' }]
+        for (const seg of segments) rows.push({ ...seg, index: `${part.key}-${seg.index}` })
+      }
+      return rows
     },
     toggle(key) {
       this.expanded = { ...this.expanded, [key]: !this.expanded[key] }
@@ -2278,6 +2313,17 @@ export default {
       this.pendingLink = url
       this.linkSheetUrl = link?.label || url
       this.linkSheetOpen = true
+    },
+    // 正文里的链接（用户自己粘的网址、系统提示里的地址）。
+    openInlineLink(url) {
+      const target = String(url || '').trim()
+      if (!target) return
+      this.previewLink(target, linkLabel(target))
+    },
+    openInlineLinkMenu(url) {
+      const target = String(url || '').trim()
+      if (!target) return
+      this.openLinkMenu({ url: target, label: linkLabel(target) })
     },
     previewLink(url, label) {
       // H5 或旧版原生壳没有 plus.webview 时，退回系统浏览器而不是只弹错误。
@@ -3374,6 +3420,22 @@ export default {
   font-size: calc(27rpx * var(--font-scale));
   line-height: 1.62;
   word-break: break-word;
+}
+/* 正文里的网址：在气泡里也要一眼看出可点，点一下进内置预览。 */
+.msg-link {
+  color: var(--accent-soft);
+  text-decoration: underline;
+  text-underline-offset: 3rpx;
+}
+.user-bubble .msg-link {
+  color: var(--accent-ink);
+}
+/* 系统消息的正文是暖灰色，链接跟着这一套但提亮一级，靠下划线强调可点。 */
+.system-bubble .msg-link {
+  color: #e8b3ae;
+}
+.theme-light .system-bubble .msg-link {
+  color: #8a4a45;
 }
 .assistant-text {
   color: var(--text);

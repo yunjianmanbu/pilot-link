@@ -5,9 +5,14 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 /**
- * 手机端的配色来自 App.vue 里的 CSS 变量，桌面客户端的是
- * pilot/pilot/src/renderer/src/styles.css。两端保持同一套色值，
- * 这里直接读两边的样式文件比对，避免以后改了一边忘了另一边。
+ * 手机端配色来自 App.vue 的 CSS 变量，桌面客户端的是 styles.css。
+ *
+ * 两端**不再共用一套调色板**：桌面端只保留 dark / light 两套主题、没有强调色
+ * 预设（`[data-accent]` 已从 styles.css 移除，见 pilot/docs/theme-system.md），
+ * 手机端仍是 12 套配色。因此这里只保留仍然成立的两类跨端校验：
+ *   1. 对比度档位的分隔线粗细两端同源（都出自 gen-appearance-css.mjs）；
+ *   2. 桌面端不得重新引入 accent 预设（否则与主题体系文档冲突）。
+ * 手机端自身的配色/可读性/层级断言全部保留。
  */
 const here = dirname(fileURLToPath(import.meta.url))
 const APP_VUE = join(here, '..', 'App.vue')
@@ -45,52 +50,17 @@ const pagesJson = readFileSync(PAGES_JSON, 'utf8')
 
 const appDark = variables(blockOf(appVue, 'page,\n:root'))
 const appLight = variables(blockOf(appVue, '\n.theme-light {'))
-const clientDark = clientCss ? variables(blockOf(clientCss, ':root {')) : {}
-const clientLight = clientCss ? variables(blockOf(clientCss, ":root[data-theme='light']")) : {}
-
-// 两端的变量名并不完全一样：客户端的 panel 在手机端叫 surface，faint 叫 dim。
-// 这些成对变量每增加一条，就少一次“改了一边忘了另一边”的机会。
-const DARK_PAIRS = [
-  ['--bg', '--bg'],
-  ['--page', '--page'],
-  ['--surface', '--panel'],
-  ['--surface-2', '--panel-2'],
-  ['--surface-3', '--panel-3'],
-  ['--surface-float', '--surface'],
-  ['--hover', '--hover'],
-  ['--hover-strong', '--hover-strong'],
-  ['--border', '--border'],
-  ['--line', '--line'],
-  ['--line-strong', '--line-strong'],
-  ['--text', '--text'],
-  ['--text-strong', '--text'],
-  ['--muted', '--muted'],
-  ['--dim', '--faint'],
-  ['--accent', '--accent']
-]
-const LIGHT_PAIRS = DARK_PAIRS
-
 
 // 拆仓后本仓库不含桌面端源码与工作区文档：读不到就跳过，而不是判失败。
 const skipCross = clientCss != null ? false : '独立仓库不含桌面端源码（pilot/pilot）与工作区文档（pilot/docs），跳过跨仓库一致性检查'
-test('手机端深色主题与客户端同色', { skip: skipCross }, () => {
-  for (const [appKey, clientKey] of DARK_PAIRS) {
-    assert.equal(
-      appDark[appKey]?.toLowerCase(),
-      clientDark[clientKey]?.toLowerCase(),
-      `${appKey} 与客户端 ${clientKey} 不一致`
-    )
-  }
-})
 
-test('手机端浅色主题与客户端同色', { skip: skipCross }, () => {
-  for (const [appKey, clientKey] of LIGHT_PAIRS) {
-    assert.equal(
-      appLight[appKey]?.toLowerCase(),
-      clientLight[clientKey]?.toLowerCase(),
-      `浅色 ${appKey} 与客户端 ${clientKey} 不一致`
-    )
-  }
+test('桌面端样式表不再有强调色预设', { skip: skipCross }, () => {
+  // 主题体系文档约定桌面端只有 dark / light 两套：一旦有人把 [data-accent]
+  // 覆盖层加回来，主进程画窗口底色、store 校验和生成器会全部对不上。
+  assert.doesNotMatch(clientCss, /\[data-accent/, '桌面端又出现了 [data-accent] 覆盖层')
+  // 沿用旧写法时每套配色都会写一份 `:root[data-theme='light']`，这里只允许一份。
+  const lightBlocks = clientCss.match(/^:root\[data-theme='light'\] \{/gm) ?? []
+  assert.equal(lightBlocks.length, 1, `桌面端应该有且只有一份浅色调色板，实际 ${lightBlocks.length} 份`)
 })
 
 test('手机端次级文字与客户端同样可读', () => {
@@ -137,9 +107,13 @@ test('功能色在深色和浅色下都独立存在', () => {
   }
 })
 
-test('强调色上的文字使用 accent-ink，不写死白色', { skip: skipCross }, () => {
-  assert.equal(appDark['--accent-ink']?.toLowerCase(), clientDark['--accent-ink']?.toLowerCase())
-  assert.equal(appLight['--accent-ink']?.toLowerCase(), clientLight['--accent-ink']?.toLowerCase())
+test('强调色上的文字使用 accent-ink，不写死白色', () => {
+  for (const [mode, palette] of [
+    ['深色', appDark],
+    ['浅色', appLight]
+  ]) {
+    assert.ok(palette['--accent-ink'], `${mode}缺少 --accent-ink`)
+  }
   assert.doesNotMatch(appVue, /\.btn\.primary\s*\{[^}]*color:\s*#fff/i)
 })
 
@@ -265,59 +239,8 @@ function colorDistance(a, b) {
   return Math.sqrt(left.reduce((sum, value, index) => sum + (value - right[index]) ** 2, 0))
 }
 
-for (const name of [
-  'pine',
-  'indigo',
-  'clay',
-  'ocean',
-  'moss',
-  'plum',
-  'rose',
-  'sand',
-  'orange',
-  'celadon',
-  'claude'
-]) {
-  test(`手机端 ${name} 主题色与客户端一致`, { skip: skipCross }, () => {
-    const appDarkAccent = variables(blockOf(appVue, `\n.accent-${name} {`))
-    const appLightAccent = variables(blockOf(appVue, `\n.theme-light.accent-${name} {`))
-    const clientDarkAccent = variables(blockOf(clientCss, `:root[data-accent='${name}']`))
-    const clientLightAccent = variables(
-      blockOf(clientCss, `:root[data-theme='light'][data-accent='${name}']`)
-    )
 
-    for (const [appAccent, clientAccent] of [
-      [appDarkAccent, clientDarkAccent],
-      [appLightAccent, clientLightAccent]
-    ]) {
-      assert.equal(appAccent['--accent']?.toLowerCase(), clientAccent['--accent']?.toLowerCase())
-      assert.equal(
-        appAccent['--accent-soft']?.toLowerCase(),
-        clientAccent['--accent-strong']?.toLowerCase()
-      )
-      assert.equal(
-        appAccent['--accent-ink']?.toLowerCase(),
-        clientAccent['--accent-ink']?.toLowerCase()
-      )
-      assert.deepEqual(gradientStops(appAccent['--accent-gradient']), [
-        clientAccent['--sidebar-primary-from']?.toLowerCase(),
-        clientAccent['--sidebar-primary-to']?.toLowerCase()
-      ])
-    }
-  })
-}
-
-const THEME_BACKGROUND_PAIRS = [
-  ['--bg', '--bg'],
-  ['--page', '--page'],
-  ['--surface-float', '--surface'],
-  ['--surface', '--panel'],
-  ['--surface-2', '--panel-2'],
-  ['--surface-3', '--panel-3'],
-  ['--border', '--border']
-]
-
-test('每套主题的底色与客户端一致且层级正确', { skip: skipCross }, () => {
+test('每套主题的底色层级正确', () => {
   for (const name of [
     'pine',
     'indigo',
@@ -328,26 +251,14 @@ test('每套主题的底色与客户端一致且层级正确', { skip: skipCross
     'rose',
     'sand',
     'orange',
-    'celadon'
+    'celadon',
+    'claude'
   ]) {
-    for (const [mode, appSelector, clientSelector, base] of [
-      ['深色', `\n.accent-${name} {`, `:root[data-accent='${name}']`, appDark],
-      [
-        '浅色',
-        `\n.theme-light.accent-${name} {`,
-        `:root[data-theme='light'][data-accent='${name}']`,
-        appLight
-      ]
+    for (const [mode, appSelector] of [
+      ['深色', `\n.accent-${name} {`],
+      ['浅色', `\n.theme-light.accent-${name} {`]
     ]) {
       const appPalette = variables(blockOf(appVue, appSelector))
-      const clientPalette = variables(blockOf(clientCss, clientSelector))
-      for (const [appKey, clientKey] of THEME_BACKGROUND_PAIRS) {
-        assert.equal(
-          appPalette[appKey]?.toLowerCase(),
-          clientPalette[clientKey]?.toLowerCase(),
-          `${mode} ${name} ${appKey} 与客户端 ${clientKey} 不一致`
-        )
-      }
 
       const page = luminance(appPalette['--page'])
       const card = luminance(appPalette['--surface'])
@@ -380,8 +291,11 @@ test('每套主题的底色与客户端一致且层级正确', { skip: skipCross
         `${mode} ${name} 悬浮层与页面底色亮度几乎相同`
       )
 
+      // 除 claude 外，配色块只覆盖底色与强调色，文字色继承 :root / .theme-light，
+      // 所以这里按「基础调色板 + 本套覆盖」合并后再算对比度。
+      const palette = { ...(mode === '深色' ? appDark : appLight), ...appPalette }
       for (const token of ['--text', '--muted', '--dim']) {
-        const ratio = contrastRatio(base[token], appPalette['--surface-3'])
+        const ratio = contrastRatio(palette[token], palette['--surface-3'])
         assert.ok(
           ratio >= 4.5,
           `${mode} ${name} ${token} 在最深卡片上的对比度只有 ${ratio.toFixed(2)}`
@@ -418,33 +332,19 @@ test('每套主题的强调色与按钮文字保持可读对比度', () => {
   }
 })
 
-/** 手机端与客户端对比度 / 饱和度档位的对应选择器（带 ` {` 以避开长选择器的前缀匹配）。 */
-function appearanceSelectors(property, level, accent, mode) {
+/** 手机端对比度 / 饱和度档位选择器（带 ` {` 以避开长选择器的前缀匹配）。 */
+function appearanceSelector(property, level, accent, mode) {
   const app = mode === 'dark' ? `.${property}-${level}` : `.theme-light.${property}-${level}`
-  const client =
-    mode === 'dark'
-      ? `:root[data-${property}='${level}']`
-      : `:root[data-theme='light'][data-${property}='${level}']`
   const suffix = accent === 'graphite' ? '' : `.accent-${accent}`
-  const clientSuffix = accent === 'graphite' ? '' : `[data-accent='${accent}']`
-  return [`${app}${suffix} {`, `${client}${clientSuffix} {`]
+  return `${app}${suffix} {`
 }
 
 /** 未叠加档位的基础调色板，用于检查低/高档确实改变了颜色。 */
-function baseSelectors(accent, mode) {
+function baseSelector(accent, mode) {
   if (mode === 'dark') {
-    return {
-      app: accent === 'graphite' ? 'page,\n:root {' : `\n.accent-${accent} {`,
-      client: accent === 'graphite' ? ':root {' : `:root[data-accent='${accent}']`
-    }
+    return accent === 'graphite' ? 'page,\n:root {' : `\n.accent-${accent} {`
   }
-  return {
-    app: accent === 'graphite' ? '\n.theme-light {' : `\n.theme-light.accent-${accent} {`,
-    client:
-      accent === 'graphite'
-        ? ":root[data-theme='light'] {"
-        : `:root[data-theme='light'][data-accent='${accent}']`
-  }
+  return accent === 'graphite' ? '\n.theme-light {' : `\n.theme-light.accent-${accent} {`
 }
 
 const ALL_ACCENTS = [
@@ -468,42 +368,11 @@ const CONTRAST_TEXT_PAIRS = [
   ['--dim', '--faint']
 ]
 
-test('对比度档位的底色与文字和客户端一致', { skip: skipCross }, () => {
-  for (const level of ['standard', 'low', 'high']) {
-    for (const accent of ALL_ACCENTS) {
-      for (const mode of ['dark', 'light']) {
-        const [appSelector, clientSelector] = appearanceSelectors(
-          'contrast',
-          level,
-          accent,
-          mode
-        )
-        const appPalette = variables(blockOf(appVue, appSelector))
-        const clientPalette = variables(blockOf(clientCss, clientSelector))
-        for (const [appKey, clientKey] of THEME_BACKGROUND_PAIRS) {
-          assert.equal(
-            appPalette[appKey]?.toLowerCase(),
-            clientPalette[clientKey]?.toLowerCase(),
-            `${mode} ${accent} ${level} ${appKey} 与客户端 ${clientKey} 不一致`
-          )
-        }
-        for (const [appKey, clientKey] of CONTRAST_TEXT_PAIRS) {
-          assert.equal(
-            appPalette[appKey]?.toLowerCase(),
-            clientPalette[clientKey]?.toLowerCase(),
-            `${mode} ${accent} ${level} ${appKey} 与客户端 ${clientKey} 不一致`
-          )
-        }
-      }
-    }
-  }
-})
-
 // 标准档以旧低对比度为基准，低档再软一档，最弱的次级文字会略低于 4.5；
 // 这里按档位给底线，低档仍保持在 4.2:1 以上，其余两档维持 4.5:1。
 const CONTRAST_FLOORS = { low: 4.2, standard: 4.5, high: 4.5 }
 
-test('对比度档位在最深卡片上的文字仍然可读', { skip: skipCross }, () => {
+test('对比度档位在最深卡片上的文字仍然可读', () => {
   for (const level of ['standard', 'low', 'high']) {
     const floor = CONTRAST_FLOORS[level]
     for (const accent of ALL_ACCENTS) {
@@ -511,12 +380,7 @@ test('对比度档位在最深卡片上的文字仍然可读', { skip: skipCross
         ['dark', '深色'],
         ['light', '浅色']
       ]) {
-        const [appSelector, clientSelector] = appearanceSelectors(
-          'contrast',
-          level,
-          accent,
-          mode
-        )
+        const appSelector = appearanceSelector('contrast', level, accent, mode)
         const appPalette = variables(blockOf(appVue, appSelector))
         for (const token of ['--text', '--muted', '--dim']) {
           const ratio = contrastRatio(appPalette[token], appPalette['--surface-3'])
@@ -525,81 +389,41 @@ test('对比度档位在最深卡片上的文字仍然可读', { skip: skipCross
             `${label} ${accent} ${level} ${token} 在最深卡片上的对比度只有 ${ratio.toFixed(2)}，低于 ${floor}`
           )
         }
-        const clientPalette = variables(blockOf(clientCss, clientSelector))
-        for (const token of ['--text', '--text-soft', '--muted', '--faint']) {
-          const ratio = contrastRatio(clientPalette[token], clientPalette['--panel-3'])
-          assert.ok(
-            ratio >= floor,
-            `客户端 ${label} ${accent} ${level} ${token} 在最深卡片上的对比度只有 ${ratio.toFixed(2)}，低于 ${floor}`
-          )
-        }
       }
     }
   }
 })
 
-test('各对比度档位确实改变了卡片阶梯', { skip: skipCross }, () => {
+test('各对比度档位确实改变了卡片阶梯', () => {
   for (const accent of ALL_ACCENTS) {
     for (const mode of ['dark', 'light']) {
-      const base = baseSelectors(accent, mode)
-      const baseApp = variables(blockOf(appVue, base.app))
-      const baseClient = variables(blockOf(clientCss, base.client))
+      const baseApp = variables(blockOf(appVue, baseSelector(accent, mode)))
       for (const level of ['standard', 'low', 'high']) {
-        const [appSelector, clientSelector] = appearanceSelectors(
-          'contrast',
-          level,
-          accent,
-          mode
-        )
+        const appSelector = appearanceSelector('contrast', level, accent, mode)
         const appPalette = variables(blockOf(appVue, appSelector))
-        const clientPalette = variables(blockOf(clientCss, clientSelector))
         assert.notEqual(
           appPalette['--surface-3'],
           baseApp['--surface-3'],
           `${mode} ${accent} 的 ${level} 对比度没有改变手机端卡片阶梯`
         )
-        assert.notEqual(
-          clientPalette['--panel-3'],
-          baseClient['--panel-3'],
-          `${mode} ${accent} 的 ${level} 对比度没有改变客户端卡片阶梯`
-        )
       }
     }
   }
 })
 
-test('饱和度档位的主题色与功能色和客户端一致', { skip: skipCross }, () => {
-  const pairs = [
-    ['--accent', '--accent'],
-    ['--knowledge', '--knowledge'],
-    ['--file', '--blue'],
-    ['--pause', '--amber'],
-    ['--stop', '--red'],
-    ['--resume', '--green'],
-    ['--review', '--violet'],
-    ['--accent-ink', '--accent-ink']
-  ]
-  for (const level of ['standard', 'low', 'high']) {
-    for (const accent of ALL_ACCENTS) {
-      for (const mode of ['dark', 'light']) {
-        const [appSelector, clientSelector] = appearanceSelectors(
-          'saturation',
-          level,
-          accent,
-          mode
-        )
-        const appPalette = variables(blockOf(appVue, appSelector))
-        const clientPalette = variables(blockOf(clientCss, clientSelector))
-        for (const [appKey, clientKey] of pairs) {
-          assert.equal(
-            appPalette[appKey]?.toLowerCase(),
-            clientPalette[clientKey]?.toLowerCase(),
-            `${mode} ${accent} ${level} 的 ${appKey} 与客户端 ${clientKey} 不一致`
-          )
-        }
-      }
-    }
-  }
+test('对比度档位就位且文字色随档位递增', () => {
+  // 两端的分隔线由 gen-appearance-css.mjs 同源生成（见上一条），但对比度
+  // 档位的文字色是两端各自从自己的调色板计算的，这里只校验手机端内部
+  // 「低 < 标准 < 高」的递进关系。
+  const levelOf = (level) => variables(blockOf(appVue, appearanceSelector('contrast', level, 'graphite', 'dark')))
+  const ratios = ['low', 'standard', 'high'].map((level) => {
+    const palette = levelOf(level)
+    return contrastRatio(palette['--text'], palette['--surface-3'])
+  })
+  assert.ok(
+    ratios[0] < ratios[1] && ratios[1] < ratios[2],
+    `对比度档位的文字可读性未递增：${ratios.map((value) => value.toFixed(2)).join(' / ')}`
+  )
 })
 
 test('饱和度只改鲜艳程度，不破坏强调色上的文字对比', () => {
@@ -609,10 +433,10 @@ test('饱和度只改鲜艳程度，不破坏强调色上的文字对比', () =>
         ['dark', '深色'],
         ['light', '浅色']
       ]) {
-        const base = baseSelectors(accent, mode)
-        const baseApp = variables(blockOf(appVue, base.app))
-        const [appSelector] = appearanceSelectors('saturation', level, accent, mode)
-        const appPalette = variables(blockOf(appVue, appSelector))
+        const baseApp = variables(blockOf(appVue, baseSelector(accent, mode)))
+        const appPalette = variables(
+          blockOf(appVue, appearanceSelector('saturation', level, accent, mode))
+        )
         // 高饱和可能把强调色推过底线，此时生成器会换上对比度更高的
         // accent-ink；这里按该档自己的文字色校验。
         const ink = appPalette['--accent-ink'] ?? baseApp['--accent-ink']
@@ -723,23 +547,6 @@ test('主题强调色之间保持足够区分度', () => {
   }
 })
 
-test('暖白的深浅底色与客户端一致', { skip: skipCross }, () => {
-  for (const [mode, appSelector, clientSelector] of [
-    ['深色', '\n.accent-claude {', ":root[data-accent='claude']"],
-    ['浅色', '\n.theme-light.accent-claude {', ":root[data-theme='light'][data-accent='claude']"]
-  ]) {
-    const appPalette = variables(blockOf(appVue, appSelector))
-    const clientPalette = variables(blockOf(clientCss, clientSelector))
-    for (const [appKey, clientKey] of DARK_PAIRS) {
-      assert.equal(
-        appPalette[appKey]?.toLowerCase(),
-        clientPalette[clientKey]?.toLowerCase(),
-        `${mode} ${appKey} 与客户端 ${clientKey} 不一致`
-      )
-    }
-  }
-})
-
 /** 从 rgba(...) 取透明度，用于校验悬停叠色的强弱。 */
 function alphaOf(value) {
   const match = /rgba?\([^)]*?([01]?\.?\d+)\s*\)/i.exec(String(value).trim())
@@ -750,7 +557,7 @@ function alphaOf(value) {
 }
 
 /**
- * 页面底色 / 悬浮底色 / 悬停态三层必须同时存在于两端。
+ * 页面底色 / 悬浮底色 / 悬停态三层必须同时存在。
  * 页面底色要和卡片底色区分开，悬浮层要比卡片高、又不能高过最深卡片，
  * 悬停叠色要有可见效果但不过讂——这三条是手机端最容易在小屏上手滑改坏的地方。
  */

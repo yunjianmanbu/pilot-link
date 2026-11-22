@@ -5,14 +5,16 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { messageTime } from '../lib/format.js'
 import { createPressGesture, movedBeyond, touchPoint } from '../lib/press.js'
+import { readClient, readClientTree } from './client-source.mjs'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
-const CLIENT = path.join(ROOT, '..', 'pilot')
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
-const readClient = (relative) => {
-  const abs = path.join(CLIENT, relative)
-  return fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : null
-}
+
+/** ChatView 的正文已经拆到 components/chat 下，两处一起读。 */
+const readChatView = () =>
+  [readClient('src/renderer/src/components/ChatView.tsx'), readClientTree('src/renderer/src/components/chat')]
+    .filter(Boolean)
+    .join('\n') || null
 
 const sessions = read('pages/sessions/index.vue')
 const chat = read('pages/chat/index.vue')
@@ -22,7 +24,7 @@ const knowledge = read('pages/knowledge/index.vue')
 const files = read('pages/files/index.vue')
 const settings = read('pages/settings/index.vue')
 const store = read('store/index.js')
-const protocol = readClient('src/main/companion/server.ts')
+const protocol = readClientTree('src/main/companion')
 const locale = read('lib/locale-en.js')
 
 
@@ -187,7 +189,7 @@ test('对话页失败横幅可重试，评审报告和消息编辑都有入口',
   assert.ok(chat.includes('confirmDeleteMessage'), '删除指令没有确认入口')
   assert.ok(chat.includes("t('删除这条还没有回复的指令？')"), '缺少删除未回复指令的确认文案')
   assert.ok(chat.includes('deleteMessage(sessionId, target.id)'), '删除指令没有接到 store')
-  const view = readClient('src/renderer/src/components/ChatView.tsx')
+  const view = readChatView()
   assert.ok(view.includes('onDeleteMessage'), '桌面端没有接口删除指令')
   assert.ok(
     view.includes('transcript[transcript.length - 1]?.id'),
@@ -315,7 +317,7 @@ test('待办的全部发送、单条发送和删除都先弹框确认', { skip: 
   assert.ok(sendAllAt > body.indexOf('class="todo-add-row"'), '全部发送应在待办列表底部')
 
   // 桌面端同款动作也必须先确认。
-  const view = readClient('src/renderer/src/components/ChatView.tsx')
+  const view = readChatView()
   assert.ok(view.includes('window.confirm(t("发送这条待办？"))'), '桌面端单条发送没有确认')
   assert.ok(
     view.includes('window.confirm(t("全部发送这 {v1} 条待办？", { v1: pending.length }))'),

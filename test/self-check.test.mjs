@@ -24,20 +24,17 @@ import {
   statusLabel,
   summarizeCounts
 } from '../lib/self-check.js'
+import { readClientTree } from './client-source.mjs'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
-const CLIENT = path.join(ROOT, '..', 'pilot')
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
-const readClient = (relative) => {
-  const abs = path.join(CLIENT, relative)
-  return fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : null
-}
 
 const page = read('pages/self-check/index.vue')
 const pages = read('pages.json')
 const settings = read('pages/settings/index.vue')
 const store = read('store/index.js')
-const protocol = readClient('src/main/companion/server.ts')
+// 协议分支已拆到 companion/handlers/*，按目录读整份协议。
+const protocol = readClientTree('src/main/companion')
 const locale = read('lib/locale-en.js')
 
 const sample = {

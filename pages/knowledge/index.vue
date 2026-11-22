@@ -322,6 +322,10 @@ export default {
     this.searchSeq += 1
   },
   methods: {
+    /** 模板里的时间戳要相对时间：Vue 3 模板只能访实例属性，
+        不把 lib/format.js 的 relativeTime 挂上来，渲染就会抛
+        `relativeTime is not a function`，整页白掉。 */
+    relativeTime,
     async loadPairs() {
       if (!this.sessionId) return
       const seq = ++this.searchSeq

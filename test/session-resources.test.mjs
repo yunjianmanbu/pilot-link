@@ -180,7 +180,13 @@ test('超长描述被截断以免撑爆一帧', () => {
 // 页面上的风险/来源标签必须与 lib 的口径一致，否则同一个工具在两个地方叫法不同。
 test('预览页的风险与来源标签和 lib 口径一致', () => {
   const source = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), '..', 'pages', 'session-resources', 'index.vue'),
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      '..',
+      'components',
+      'session-resources',
+      'session-resources.vue'
+    ),
     'utf8'
   )
   for (const [method, label, values] of [
@@ -198,28 +204,130 @@ test('预览页的风险与来源标签和 lib 口径一致', () => {
   }
 })
 
-// 任务卡片上的四个入口指向同一页的不同分类，页面必须认得 tab 参数。
-test('会话资源页注册并识别链接、工具、知识库、文件四个分类', () => {
+// 五个分类都只由一个组件渲染，页面壳只负责把 URL 参数传进去：
+// 合并页带标签条，行内快捷入口各进一个独立页面。
+test('会话资源组件注册并识别链接、工具、记忆、知识库、文件五个分类', () => {
   const root = join(dirname(fileURLToPath(import.meta.url)), '..')
   const pages = JSON.parse(readFileSync(join(root, 'pages.json'), 'utf8'))
-  assert.ok(
-    pages.pages.some((page) => page.path === 'pages/session-resources/index'),
-    'pages.json 没有注册会话资源页'
-  )
-  const page = readFileSync(join(root, 'pages', 'session-resources', 'index.vue'), 'utf8')
-  assert.ok(
-    page.includes("const TABS = ['links', 'tools', 'knowledge', 'files']"),
-    '页面没有声明四个分类'
+  const panel = readFileSync(
+    join(root, 'components', 'session-resources', 'session-resources.vue'),
+    'utf8'
   )
   assert.ok(
-    page.includes('TABS.includes(options?.tab) ? options.tab : \'links\''),
-    '页面没有按 tab 参数选择初始分类'
+    panel.includes("const TABS = ['links', 'tools', 'memory', 'knowledge', 'files']"),
+    '组件没有声明五个分类'
   )
-  for (const tab of ['links', 'tools', 'knowledge', 'files']) {
-    assert.ok(page.includes(`setTab('${tab}')`), `缺少 ${tab} 分类的切换入口`)
+  assert.ok(
+    panel.includes("TABS.includes(this.startTab) ? this.startTab : 'links'"),
+    '组件没有按 startTab 选择初始分类'
+  )
+  for (const tab of ['links', 'tools', 'memory', 'knowledge', 'files']) {
+    assert.ok(panel.includes(`setTab('${tab}')`), `缺少 ${tab} 分类的切换入口`)
   }
+  // 独立页面只有一种分类，标签条不能再出现。
+  assert.ok(panel.includes('v-if="showTabs"'), '标签条没有按独立页面隐藏')
+  assert.ok(panel.includes('return !this.single'), 'showTabs 没有依据 single 判断')
   // 知识库与文件有独立完整页面，从会话资源页带 sessionId 跳过去。
-  assert.ok(page.includes('/pages/knowledge/index?sessionId='), '知识库没有带上会话 ID 跳转')
-  assert.ok(page.includes('/pages/files/index?sessionId='), '文件没有带上会话 ID 跳转')
-  assert.ok(page.includes("'/pages/session-resources/index") === false, '页面不应反向跳自己')
+  assert.ok(panel.includes('/pages/knowledge/index?sessionId='), '知识库没有带上会话 ID 跳转')
+  assert.ok(panel.includes('/pages/files/index?sessionId='), '文件没有带上会话 ID 跳转')
+
+  // 合并页 + 三个独立页：链接 / 工具 / 记忆各一个路由。
+  for (const [route, tab] of [
+    ['pages/session-resources/index', null],
+    ['pages/session-links/index', 'links'],
+    ['pages/session-tools/index', 'tools'],
+    ['pages/session-memory/index', 'memory']
+  ]) {
+    assert.ok(
+      pages.pages.some((page) => page.path === route),
+      `pages.json 没有注册 ${route}`
+    )
+    const file = readFileSync(join(root, ...route.split('/').slice(0, -1), 'index.vue'), 'utf8')
+    assert.ok(file.includes('<session-resources'), `${route} 没有渲染会话资源面板`)
+    if (!tab) continue
+    assert.ok(file.includes(`start-tab="${tab}"`), `${route} 没有固定 ${tab} 分类`)
+    assert.ok(/\sstandalone/.test(file), `${route} 没有关掉标签条`)
+  }
+})
+
+// 新会话根本没用到记忆时，「记忆」点进去不能是一片空白。
+test('会话记忆为空时用项目记忆兜底，并先补齐工作区路径', () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+  const panel = readFileSync(
+    join(root, 'components', 'session-resources', 'session-resources.vue'),
+    'utf8'
+  )
+  // 会话记忆返回空 → 再去拉工作区级记忆（在线才拉，离线拉也只会报错）。
+  const loadStart = panel.indexOf('async loadSessionMemory() {')
+  assert.notEqual(loadStart, -1, '缺少 loadSessionMemory')
+  const loadBody = panel.slice(loadStart, panel.indexOf('\n    },', loadStart))
+  assert.ok(
+    /if \(rows\.length === 0[^\n]*\)\s*await this\.loadMemoryFallback\(seq\)/.test(loadBody),
+    '会话记忆为空时没有兜底展示项目记忆'
+  )
+  // 电脑端没响应时先用手机上的记忆快照上屏，否则页面会空等十几秒。
+  assert.ok(loadBody.includes('cachedSessionMemory(this.sessionId)'), '没有先用缓存记忆上屏')
+  assert.ok(loadBody.includes('loadSessionMemoryDetails(this.sessionId)'), '没有用带 source 的记忆读取')
+  // 中继「假在线」恢复后要补读：只监听 connectionState 会让页面永久停在空态。
+  assert.ok(panel.includes("'store.agentOnline'(online)"), '没有监听电脑端在线状态补读')
+  assert.ok(panel.includes('retryWhenStale()'), '缺少链路恢复后的补读逻辑')
+  // 兜底前先向电脑端要一次工作区路径，否则从任务卡片进来永远拿不到路径。
+  const fallbackStart = panel.indexOf('async loadMemoryFallback(seq) {')
+  assert.notEqual(fallbackStart, -1, '缺少 loadMemoryFallback')
+  const fallbackBody = panel.slice(fallbackStart, panel.indexOf('\n    },', fallbackStart))
+  assert.ok(fallbackBody.includes('if (!this.workspacePath) await this.resolveWorkspace()'), '兜底前没有补齐工作区路径')
+  assert.ok(fallbackBody.includes('await loadMemory(path)'), '兜底没有读取项目记忆')
+  assert.ok(fallbackBody.includes('this.memoryTotal = this.memoryFallback.length'), '兜底条目没有计入条数')
+  // 渲染与计数都走 memoryRows，避免「0 条记忆」却列着一屏内容。
+  assert.ok(panel.includes('return this.memories.length > 0 ? this.memories : this.memoryFallback'), 'memoryRows 没有兜底')
+  assert.ok(panel.includes('v-for="entry in memoryRows"'), '记忆列表没有渲染兜底条目')
+  assert.ok(panel.includes("if (this.tab === 'memory') return this.memoryRows"), '记忆条数没有按兜底列表统计')
+})
+
+// 链接点开先进 App 内置浏览器，内置预览不可用才交给系统浏览器。
+test('链接点开走内置网页预览，失败才交给系统浏览器', () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+  const panel = readFileSync(
+    join(root, 'components', 'session-resources', 'session-resources.vue'),
+    'utf8'
+  )
+  assert.ok(
+    panel.includes("import { fileActionLabel, openWebPreview } from '../../lib/files.js'"),
+    '没有引入内置网页预览'
+  )
+  const openStart = panel.indexOf('    openLink(link) {')
+  assert.notEqual(openStart, -1, '缺少 openLink')
+  const openBody = panel.slice(openStart, panel.indexOf('\n    },', openStart))
+  assert.ok(openBody.includes('openWebPreview(url'), '链接没有走内置预览')
+  assert.ok(openBody.includes('.catch('), '内置预览失败时没有回退')
+  const externalStart = panel.indexOf('    openLinkExternal(url, link) {')
+  assert.notEqual(externalStart, -1, '缺少 openLinkExternal')
+  const externalBody = panel.slice(externalStart, panel.indexOf('\n    },', externalStart))
+  assert.ok(externalBody.includes('plus.runtime.openURL'), '回退没有交给系统浏览器')
+  // 内置预览本身仍然存在，且是 WebView 而不是跳出 App。
+  const files = readFileSync(join(root, 'lib', 'files.js'), 'utf8')
+  assert.ok(files.includes('export function openWebPreview(url, name, options = {})'), 'lib/files.js 没有内置预览入口')
+})
+
+// 模板里调用的函数必须挂在实例上：Vue 3 的模板不认模块作用域的 import，
+// 漏挂一个就会渲染抛错、整页只剩背景色（链接页/记忆页空白页的真实成因）。
+test('模板里调用的 relativeTime 已挂到 methods，不会再整页渲染失败', () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+  for (const file of [
+    'components/session-resources/session-resources.vue',
+    'pages/knowledge/index.vue'
+  ]) {
+    const source = readFileSync(join(root, file), 'utf8')
+    const template = source.slice(0, source.lastIndexOf('</template>'))
+    if (template.includes('relativeTime(')) {
+      const methodsStart = source.indexOf('  methods: {')
+      assert.notEqual(methodsStart, -1, `${file} 没有 methods 段`)
+      const methodsBody = source.slice(methodsStart)
+      assert.match(
+        methodsBody,
+        /methods: \{[\s\S]*?\n {4}relativeTime,/,
+        `${file} 模板调了 relativeTime()，但没挂到 methods（会整页白屏）`
+      )
+    }
+  }
 })

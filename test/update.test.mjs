@@ -18,6 +18,7 @@ import {
   getLastUpdateManifest,
   getUpdateDownloadState,
   installDownloadedUpdate,
+  isCheckThrottled,
   isNewerVersion,
   normalizeUpdateManifest,
   openChangelogPage,
@@ -105,6 +106,24 @@ test('缺少 versionCode 时按版本名比较', () => {
   assert.equal(compareVersionNames('2.0.0', '2.0'), 0)
   assert.equal(isNewerVersion({ versionCode: 0, version: '1.0.2' }, { versionCode: 0, version: '1.0.1' }), true)
   assert.equal(isNewerVersion({ versionCode: 0, version: '1.0.1' }, { versionCode: 0, version: '1.0.1' }), false)
+})
+
+test('静默检查的节流窗口：已是最新等 30 分钟，有未装的新版本只等 15 分钟', () => {
+  const now = 1_700_000_000_000
+  const minute = 60 * 1000
+  // 没查过 → 不节流。
+  assert.equal(isCheckThrottled({ at: 0, hasUpdate: false }, now), false)
+  assert.equal(isCheckThrottled(null, now), false)
+  // 10 分钟前刚确认过「已是最新」→ 还在 30 分钟窗口内。
+  assert.equal(isCheckThrottled({ at: now - 10 * minute, hasUpdate: false }, now), true)
+  // 差 1 秒到 30 分钟 → 仍节流；到点之后立刻放行。
+  assert.equal(isCheckThrottled({ at: now - 30 * minute + 1000, hasUpdate: false }, now), true)
+  assert.equal(isCheckThrottled({ at: now - 30 * minute - 1000, hasUpdate: false }, now), false)
+  // 20 分钟前查到过更新但用户还没装 → 15 分钟窗口已过，可以再查。
+  // 这是 1.1.4 → 1.1.5 的实际事故：修复版上线后手机端被长窗口挡住。
+  assert.equal(isCheckThrottled({ at: now - 20 * minute, hasUpdate: true }, now), false)
+  // 有更新且才过去 10 分钟 → 仍节流，不反复弹窗。
+  assert.equal(isCheckThrottled({ at: now - 10 * minute, hasUpdate: true }, now), true)
 })
 
 test('下载进度按字节计算并限制在 0–100', () => {

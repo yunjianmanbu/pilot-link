@@ -3,20 +3,17 @@ import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { readClientTree } from './client-source.mjs'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
-const CLIENT = path.join(ROOT, '..', 'pilot')
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
-const readClient = (relative) => {
-  const abs = path.join(CLIENT, relative)
-  return fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : null
-}
 
 const page = read('pages/module-check/index.vue')
 const pages = read('pages.json')
 const settings = read('pages/settings/index.vue')
 const store = read('store/index.js')
-const protocol = readClient('src/main/companion/server.ts')
+// 电脑端把各个 case 拆到 companion/handlers/* 之后，整份协议要按目录读（含 constants.ts）。
+const protocol = readClientTree('src/main/companion')
 const locale = read('lib/locale-en.js')
 
 
@@ -141,9 +138,15 @@ test('手机报告截断时保留总数和分级计数', { skip: skipCross }, ()
   // 电脑端最多回传 160 条，避免加密中继信封放不下完整报告。
   const constant = protocol.indexOf('const PHONE_MODULE_RISK_LIMIT = 160')
   assert.notEqual(constant, -1, '协议层缺少手机报告条数上限')
-  const helper = protocol.indexOf('private phoneModuleCheckReport(')
+  // 裁剪函数已从 server.ts 的方法搬成 handlers/host-support.ts 的模块级函数，
+  // 两种写法都接受，拆分前后口径一致。
+  const helper = Math.max(
+    protocol.indexOf('function phoneModuleCheckReport('),
+    protocol.indexOf('private phoneModuleCheckReport(')
+  )
   assert.notEqual(helper, -1, '协议层缺少报告裁剪函数')
-  const body = protocol.slice(helper, protocol.indexOf('private phoneModuleCheckState('))
+  const helperEnd = protocol.indexOf('function phoneModuleCheckState(', helper)
+  const body = protocol.slice(helper, helperEnd === -1 ? undefined : helperEnd)
   assert.ok(body.includes('ranked.slice(0, PHONE_MODULE_RISK_LIMIT)'), '报告没有裁剪风险列表')
   // 按电脑端同一套顺序（严重度优先）排序后再截断，避免后几个模块的高风险被整体丢掉。
   assert.ok(body.includes('const ranked = sortRisks(report.risks)'), '裁剪前没有按严重度排序')

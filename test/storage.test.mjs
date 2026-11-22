@@ -468,3 +468,24 @@ test('草稿只保留最近的 50 个会话，超长内容会被截断', () => {
   storage.saveDraft('session:long', { text: 'x'.repeat(25_000) })
   assert.equal(storage.loadDraft('session:long').text.length, 20_000)
 })
+
+test('更新检查记录区分「已是最新」与「有未装的新版本」，并兼容旧的纯时间戳', () => {
+  reset()
+  assert.deepEqual(storage.loadUpdateCheck(), { at: 0, hasUpdate: false })
+
+  // 旧版本写的是纯数字时间戳：读出来要当成「已是最新」，不能当成有更新。
+  memory.set('pilot-app.update-check.v1', String(1700000000000))
+  assert.deepEqual(storage.loadUpdateCheck(), { at: 1700000000000, hasUpdate: false })
+
+  storage.saveUpdateCheck({ at: 1700000001000, hasUpdate: true })
+  assert.deepEqual(storage.loadUpdateCheck(), { at: 1700000001000, hasUpdate: true })
+
+  storage.saveUpdateCheck({ hasUpdate: false })
+  const record = storage.loadUpdateCheck()
+  assert.equal(record.hasUpdate, false)
+  assert.ok(record.at > 0)
+
+  // 坏数据不抛错，退化成「没查过」。
+  memory.set('pilot-app.update-check.v1', '{not json')
+  assert.deepEqual(storage.loadUpdateCheck(), { at: 0, hasUpdate: false })
+})

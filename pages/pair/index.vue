@@ -18,10 +18,11 @@
     </view>
 
     <view v-else class="card">
-      <text class="card-title">{{ t('扫码配对') }}</text>
-      <button class="btn primary big" :disabled="store.pairBusy" @click="scan">
+      <text class="card-title">{{ webRuntime ? t('粘贴配对链接') : t('扫码配对') }}</text>
+      <button v-if="!webRuntime" class="btn primary big" :disabled="store.pairBusy" @click="scan">
         {{ store.pairBusy ? t('正在配对…') : t('扫描电脑上的二维码') }}
       </button>
+      <text v-else class="muted">{{ t('浏览器里不能直接调摄像头扫码，把电脑上的配对链接粘贴到下方即可。') }}</text>
 
       <view class="divider"><text>{{ t('或粘贴配对链接') }}</text></view>
       <textarea
@@ -71,6 +72,7 @@
 <script>
 import AppDialogHost from '../../components/app-dialog-host/app-dialog-host.vue'
 import { pairingPayloadFromText } from '../../lib/pairing.js'
+import { isWebRuntime } from '../../lib/platform.js'
 import { defaultPhoneName } from '../../lib/storage.js'
 import { init, pairWithPayload, store, updatePhoneName } from '../../store/index.js'
 import { t } from '../../lib/i18n.js'
@@ -98,6 +100,10 @@ export default {
       if (!this.preview) return ''
       const match = /^(?:wss?|https?):\/\/([^/?#]+)/i.exec(this.preview.relayUrl)
       return match ? match[1] : this.preview.relayUrl
+    },
+    /** 网页版（H5 / PWA）：浏览器拿不到摄像头扫码，主路径是粘贴链接。 */
+    webRuntime() {
+      return isWebRuntime()
     }
   },
   onLoad(options) {
@@ -160,7 +166,24 @@ export default {
         this.error = t("当前环境不支持扫码，请粘贴配对链接")
       }
     },
-    paste() {
+    async paste() {
+      // H5 没有 uni.getClipboardData；浏览器里先用 Clipboard API（需 HTTPS + 用户手势）。
+      if (this.webRuntime && typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+        try {
+          const text = String((await navigator.clipboard.readText()) || '').trim()
+          if (text) {
+            this.link = text
+            this.applyLink(text)
+            return
+          }
+          this.error = t("剪贴板是空的")
+          return
+        } catch {
+          // 权限被拒（非 HTTPS 或用户拒绝）：退回下方的手动粘贴。
+          this.error = t("读取剪贴板失败，请手动粘贴")
+          return
+        }
+      }
       try {
         uni.getClipboardData({
           success: (result) => {

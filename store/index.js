@@ -62,6 +62,7 @@ import {
   loadSessionModes,
   loadSaturation,
   loadSessionsCache,
+  loadSessionMemoryCache,
   loadThemeMode,
   loadTodosCache,
   loadUnreadSessions,
@@ -80,6 +81,7 @@ import {
   saveSessionModes,
   saveSaturation,
   saveSessionsCache,
+  saveSessionMemoryCache,
   saveThemeMode,
   saveTodosCache,
   saveUnreadSessions,
@@ -91,6 +93,12 @@ import {
 const HISTORY_PAGE_SIZE = 25
 // 流式回复的增量按时间片合并后再更新界面，避免每个 token 都跨层刷新一次。
 const STREAM_FLUSH_MS = 80
+// 资源面板（链接/工具/记忆/知识库）的请求超时：这些数据都在电脑端内存里，
+// 正常是一瞬间返回。用默认的 20s / 60s 会在「中继连着但电脑端没响应」时
+// 把页面钉在 loading 上一分多钟，用户看到的就是「点了没反应、一直空」。
+const RESOURCE_TIMEOUT = 8_000
+// `sessions.get` 兜底要读会话正文，比纯清单慢一点。
+const RESOURCE_FALLBACK_TIMEOUT = 12_000
 const SESSIONS_CACHE_SAVE_MS = 5_000
 // 回到前台后定期对账：中继事件偶尔丢失时，几秒内也能自动恢复运行状态和待办。
 const FOREGROUND_SYNC_MS = 20_000
@@ -2062,7 +2070,7 @@ async function loadKnowledgeMessages(sessionId) {
       sessionId,
       limit: KNOWLEDGE_PAGE_SIZE,
       ...(before ? { before } : {})
-    })
+    }, RESOURCE_FALLBACK_TIMEOUT)
     const normalized = (Array.isArray(data?.session?.messages) ? data.session.messages : [])
       .map(normalizeMessage)
       .filter(Boolean)
@@ -2102,7 +2110,7 @@ export async function loadSessionKnowledge(sessionId, options = {}) {
         sessionId: id,
         limit,
         ...(query ? { query } : {})
-      })
+      }, RESOURCE_TIMEOUT)
       if (Array.isArray(data?.pairs)) {
         const result = {
           pairs: data.pairs,
@@ -2163,28 +2171,52 @@ export async function loadSessionKnowledge(sessionId, options = {}) {
 }
 
 /**
+ * 中继连着不等于电脑端在线：电脑端 Pilot 退出后中继仍会保持会话。
+ * 资源类请求都按这个口径判断，避免「有连接但读不到内容」。
+ */
+export function isAgentOnline() {
+  return Boolean(client?.isConnected()) && store.agentOnline
+}
+
+/**
  * 读取某个会话里出现过的链接（任务卡片上的「链接」预览）。
  *
  * 只读会话正文，不访问网络：电脑端返回它整理好的列表；旧版电脑端没有
- * `sessions.links`、或电脑离线时，从本机缓存的会话正文就地提取。
+ * `sessions.links`、或电脑离线时，依次退回 `sessions.get` 的正文与手机缓存正文。
  */
 export async function loadSessionLinks(sessionId, options = {}) {
   const id = String(sessionId || store.currentSessionId || '')
   if (!id) return { links: [], total: 0, hasMore: false, source: 'none' }
   const limit = Math.max(1, Math.min(SESSION_LINK_LIMIT, Math.round(Number(options.limit)) || SESSION_LINK_LIMIT))
-  const online = Boolean(client?.isConnected()) && store.agentOnline
+  const online = isAgentOnline()
+  let remote = null
   if (online) {
     try {
-      const data = await client.request('sessions.links', { sessionId: id, limit })
+      const data = await client.request('sessions.links', { sessionId: id, limit }, RESOURCE_TIMEOUT)
       if (Array.isArray(data?.links)) {
         const links = normalizeSessionLinks(data.links, limit)
         const total = Number(data.total) || links.length
         // 「还有更多」按电脑端给出的总数与本次上限比较：用 links.length 比较会在
         // 有条目被过滤时误报成「只显示最近 0 条」。
-        return { links, total, hasMore: data.hasMore === true || total > limit, source: 'pc' }
+        remote = { links, total, hasMore: data.hasMore === true || total > limit, source: 'pc' }
+        // 电脑端正文还没加载时它会返回空表（旧会话/刚重启），
+        // 这时先别把它当结论：本地还有缓存正文就先用着。
+        if (links.length > 0) return remote
       }
     } catch {
-      // 旧版电脑端没有这个方法，或这中间断线：退回本机缓存。
+      // 旧版电脑端没有这个方法，或这中间断线：下面用正文自己整理。
+    }
+    // 兜底①：`sessions.get` 是最早就有的方法，旧版电脑端也能拿到正文。
+    // 没有这一步，电脑端版本稍旧的人点「链接」永远是一片空。
+    try {
+      const data = await client.request('sessions.get', { sessionId: id, limit: 300 }, RESOURCE_FALLBACK_TIMEOUT)
+      const messages = Array.isArray(data?.session?.messages) ? data.session.messages : []
+      const links = extractSessionLinks(messages, limit)
+      if (links.length > 0) {
+        return { links, total: links.length, hasMore: false, source: 'pc' }
+      }
+    } catch {
+      // 会话不存在或断线：继续走缓存。
     }
   }
   const liveMessages =
@@ -2194,7 +2226,27 @@ export async function loadSessionLinks(sessionId, options = {}) {
   const cachedMessages = entry && Array.isArray(entry.messages) ? entry.messages : []
   const messages = cachedMessages.length >= liveMessages.length ? cachedMessages : liveMessages
   const links = extractSessionLinks(messages, limit)
+  if (links.length === 0 && remote) return remote
   return { links, total: links.length, hasMore: false, source: 'cache' }
+}
+
+/**
+ * 只读本机缓存，立即返回这个会话里出现过的链接。
+ *
+ * 页面先用它上一次屏幕，再在后台等电脑端结果：中继假在线时（`sessions.links`
+ * 和 `sessions.get` 都要等到超时）用户不必对着空列表干等十几秒。
+ */
+export function cachedSessionLinks(sessionId, options = {}) {
+  const id = String(sessionId || store.currentSessionId || '')
+  if (!id) return []
+  const limit = Math.max(1, Math.min(SESSION_LINK_LIMIT, Math.round(Number(options.limit)) || SESSION_LINK_LIMIT))
+  const liveMessages =
+    store.currentSessionId === id && Array.isArray(store.messages) ? store.messages : []
+  const cachedAll = loadHistoryCacheAll(storageDeviceId())
+  const entry = cachedAll && typeof cachedAll === 'object' ? cachedAll[id] : null
+  const cachedMessages = entry && Array.isArray(entry.messages) ? entry.messages : []
+  const messages = cachedMessages.length >= liveMessages.length ? cachedMessages : liveMessages
+  return extractSessionLinks(messages, limit)
 }
 
 /**
@@ -2213,7 +2265,7 @@ export async function loadSessionTools(sessionId, options = {}) {
   const online = Boolean(client?.isConnected()) && store.agentOnline
   if (!online) return { tools: [], total: 0, hasMore: false, mcpEnabled: false, source: 'offline' }
   try {
-    const data = await client.request('sessions.tools', { sessionId: id, limit }, LONG_TIMEOUT)
+    const data = await client.request('sessions.tools', { sessionId: id, limit }, RESOURCE_FALLBACK_TIMEOUT)
     const tools = normalizeSessionTools(data?.tools, limit)
     const total = Number(data?.total) || tools.length
     return {
@@ -3109,12 +3161,54 @@ export async function revertChange(sessionId, path) {
   return data?.result || null
 }
 
+/**
+ * 「会话记忆」：这个会话注入过 / 写下的条目。
+ *
+ * 选条目的规则在电脑端（shared/memory.ts 的 sessionMemories），手机端只负责展示，
+ * 避免两边各写一份排序逻辑后挑选结果不一致。
+ *
+ * 返回值带 `source`：`pc` / `cache` / `offline` / `error`。记忆只存在电脑端，
+ * 离线时用手机上一次在线读到的快照，否则「记忆」点进去就是一张空白页。
+ */
+export async function loadSessionMemoryDetails(sessionId) {
+  const id = String(sessionId || '')
+  if (!id) return { memory: [], source: 'none' }
+  const deviceId = storageDeviceId()
+  if (!client?.isConnected() || !store.agentOnline) {
+    const cached = loadSessionMemoryCache(deviceId, id)
+    return { memory: cached, source: cached.length ? 'cache' : 'offline' }
+  }
+  try {
+    const data = await request('memory.session', { sessionId: id }, RESOURCE_TIMEOUT)
+    const memory = Array.isArray(data?.memory) ? data.memory : []
+    // 空列表也写一次：下次离线就能确定「那次确实没有」，不用白等。
+    saveSessionMemoryCache(deviceId, id, memory)
+    return { memory, source: 'pc' }
+  } catch (error) {
+    const cached = loadSessionMemoryCache(deviceId, id)
+    if (cached.length) return { memory: cached, source: 'cache' }
+    throw error
+  }
+}
+
+export async function loadSessionMemory(sessionId) {
+  const result = await loadSessionMemoryDetails(sessionId)
+  return result.memory
+}
+
+/** 本机缓存里的会话记忆，同步返回，供页面立即上屏。 */
+export function cachedSessionMemory(sessionId) {
+  const id = String(sessionId || '')
+  if (!id) return []
+  return loadSessionMemoryCache(storageDeviceId(), id)
+}
+
 /** 工作区长期记忆：只操作当前工作区，内容仍只存在电脑端。 */
 export async function loadMemory(workspacePath) {
   const path = String(workspacePath || '')
   if (!path) return []
   if (!client?.isConnected()) throw new Error(t("尚未连接电脑"))
-  const data = await request('memory.list', { workspacePath: path })
+  const data = await request('memory.list', { workspacePath: path }, RESOURCE_TIMEOUT)
   return Array.isArray(data?.memory) ? data.memory : []
 }
 

@@ -3,20 +3,17 @@ import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { readClient, readClientTree } from './client-source.mjs'
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
-const CLIENT = path.join(ROOT, '..', 'pilot')
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
-const readClient = (relative) => {
-  const abs = path.join(CLIENT, relative)
-  return fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : null
-}
 
 const page = read('pages/learning/index.vue')
 const pages = read('pages.json')
 const settings = read('pages/settings/index.vue')
 const store = read('store/index.js')
-const protocol = readClient('src/main/companion/server.ts')
+// 协议分支已拆到 companion/handlers/*，按目录读整份协议。
+const protocol = readClientTree('src/main/companion')
 const learning = readClient('src/main/agent/learning.ts')
 const locale = read('lib/locale-en.js')
 
@@ -55,8 +52,9 @@ test('电脑端协议只接受 GET/HEAD 白名单，并继续走工作区校验'
     protocol.includes('normalizeLearningHostsInput(record[\'hosts\'])'),
     '学习白名单没有经过主机名校验'
   )
+  // 拆分后 handler 拿的是 host 参数而不是 this，两种宿主写法都接受。
   assert.ok(
-    protocol.includes("this.options.onEvent?.({\n          type: 'settings.changed'"),
+    /(?:this|host)\.options\.onEvent\?\.\(\{\s*\n\s*type: 'settings\.changed'/.test(protocol),
     '手机改学习设置后没有同步电脑端设置窗'
   )
   assert.ok(protocol.includes('PHONE_LEARNING_ENTRY_LIMIT'), '学习账本没有限制回传条数')
