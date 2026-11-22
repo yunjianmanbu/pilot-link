@@ -166,7 +166,30 @@ node scripts/gen-icons.mjs
 
 H5 构建之后必须跑一次铺文件脚本 —— HBuilderX 只搬运 `static/` 与构建出的
 `assets/`，不会把 `pwa/` 带到站点根目录，而 Service Worker 只有放在站点根
-才能拿到整站作用域：
+才能拿到整站作用域。两步已合成一条命令（仓库根目录）：
+
+```bash
+node pilot/scripts/build-app-web.mjs           # HBuilderX CLI 构建 + 铺壳文件
+node pilot/scripts/build-app-web.mjs --check   # 只检查：源文件是否比产物新 + 壳是否就绪
+node pilot/scripts/build-app-web.mjs --cli "/d/soft/HBuilderX.4.24.2024072208/HBuilderX/cli.exe"
+```
+
+`build-app-web.mjs` 自己找 HBuilderX CLI（`--cli` → `HBUILDERX_CLI` 环境变量 →
+`D:\soft\HBuilderX.*` / `Program Files` / `/Applications`），退出码 0 = 产物就绪，
+1 = 构建失败或产物不合格，2 = 找不到 CLI。
+
+构建完想知道这两页在浏览器里到底渲染出什么，跑端到端校验（自带静态服务，
+需要一个开着 DevTools 端口的 Edge/Chrome；它种一份假配对与缓存，断言「链接」
+「记忆」两页有内容、正文里的网址点得开）：
+
+```bash
+node pilot/scripts/verify-app-h5.mjs                    # 默认产物 + CDP 9333 + 端口 4189
+node pilot/scripts/verify-app-h5.mjs --cdp 9334 --json   # 换调试端口 / 机器可读输出
+```
+
+退出码 0 = 三项都通过，1 = 有断言失败（详情在 stderr），2 = 没有产物或连不上调试端口。
+
+只想重铺壳文件而不重新构建时，单独跑底层脚本：
 
 ```bash
 node pilot/scripts/prepare-app-web.mjs            # 铺文件 + 自检
@@ -178,7 +201,8 @@ node pilot/scripts/prepare-app-web.mjs --dir <H5 构建目录>
 
 1. 复制 `pwa/manifest.webmanifest` 与 `pwa/sw.js` 到构建目录根；
 2. 把构建产物里 `assets/`、`static/` 的实际文件清单（文件名带内容哈希）写进
-   `sw.js` 的 `ASSET_PRECACHE`，首访就整站预缓存；
+   `sw.js` 的 `ASSET_PRECACHE`，首访就整站预缓存；并在 `sw.js` 的缓存名前缀后追加
+   8 位内容指纹（`pilot-link-pwa-v2-<指纹>`），保证发版后旧缓存会被 activate 清掉；
 3. 把 `index.html` 里残留的绝对路径 `/assets/…`、`/static/…` 改成 `./assets/…`，
    同一份产物挂在域名根和 `/app/` 子路径下都能用；
 4. 校验 `index.html` 真挂了 manifest 与 theme-color、逐个核对 manifest 里的图标
@@ -197,6 +221,32 @@ node pilot/scripts/prepare-app-web.mjs --dir <H5 构建目录>
 此时页面本身仍可用，只是没有离线与安装能力 —— `main.js` 里的注册函数会在非安全
 上下文直接跳过，不会往控制台刷报错。
 
+线上现在挂在 `https://pilot.medpilot.cc/app/`（此前那个手写的 companion PWA 已被
+同一路径替换）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File pilot/scripts/deploy-app-web.ps1 `
+  -User root -Server medpilot.cc -RemoteOwner www:www
+```
+
+脚本会先跑 `build-app-web.mjs --check` 确认产物不过期，然后把线上 `/app/` tar 快照到
+`/www/wwwroot/site-backups/`，上传到 `/app.new` 并逐文件比对 SHA-256，再目录改名换上，
+最后 HTTPS 回拉 `index.html` / `sw.js` / `manifest.webmanifest` 核对字节。`-WhatIf` 只列将
+上传的文件；`-SkipBackup` 跳过快照（新主机、本就没有旧内容时用）。
+
+### 打开是白屏时
+
+1. **先按 `https://pilot.medpilot.cc/app/?reset=1`**。它注销 Service Worker、清掉
+   `pilot-link-pwa*` 缓存再重进，是坏缓存卡死（iOS Safari 最常见）的唯一免开发者工具自救路径。
+   连刷仍白屏时，页面会自己显示一页带「重新加载 / 彻底重置」的提示。
+2. 服务器上的 `/app/` 必须对带 `If-Modified-Since` / `If-None-Match` 的请求返回**完整 200**。
+   nginx 默认会回 304 空响应体，而 SW 的导航路径拿到 304 会把 0 字节当页面交给浏览器
+   ——就是纯白屏。vhost 的 `/app/` location 里加 `if_modified_since off;` 后
+   `nginx -t && nginx -s reload`；`deploy-app-web.ps1` 每次部署都会用条件请求自检这一条，
+   回退成 304 就直接失败并打印上面的修法。
+3. 首屏自愈块在 `prepare-app-web.mjs` 里，正文与 `sw.js` 一起参与构建指纹：改了它必然换
+   指纹，不会出现「逻辑改了但用户机器上还是旧 SW」的情况。
+
 网页版与 App 端的能力差异：
 
 | 能力 | App（Android） | 网页版 / PWA |
@@ -206,9 +256,11 @@ node pilot/scripts/prepare-app-web.mjs --dir <H5 构建目录>
 | 系统分享 | `plus.share` | `navigator.share`，不支持时退回剪贴板 |
 | HTML 预览 | 隔离 WebView | 只下载不执行（站点源下有配对凭证） |
 | 应用更新 | 下载 wgt / APK 安装 | 刷新页面即得最新版 |
+| 扫码配对 | `uni.scanCode` 调摄像头 | 浏览器不能直接调摄像头，主入口换成粘贴配对链接 |
 
 设置页用 `lib/platform.js` 判定运行方式：网页版隐藏「后台保持」「文件缓存」这些
-原生专属入口，换成对应的说明与刷新按钮。
+原生专属入口，换成对应的说明与刷新按钮；配对页同样按 `isWebRuntime()` 把「扫描
+二维码」换成「粘贴配对链接」提示，剪贴板优先走 `navigator.clipboard.readText()`。
 
 ## 打包 Android
 

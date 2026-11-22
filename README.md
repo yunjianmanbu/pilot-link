@@ -188,7 +188,32 @@ offline.
 
 After an H5 build you must run the asset script once — HBuilderX copies `static/` and the built
 `assets/` only, it never moves `pwa/` to the site root, and a Service Worker only gets whole-site
-scope when it is served from the root:
+scope when it is served from the root. Both steps are now one command (from the repository root):
+
+```bash
+node pilot/scripts/build-app-web.mjs           # HBuilderX CLI build + PWA shell injection
+node pilot/scripts/build-app-web.mjs --check   # check only: sources newer than output? shell in place?
+node pilot/scripts/build-app-web.mjs --cli "/d/soft/HBuilderX.4.24.2024072208/HBuilderX/cli.exe"
+```
+
+`build-app-web.mjs` locates the HBuilderX CLI itself (`--cli`, then `HBUILDERX_CLI`, then the usual
+`D:\soft\HBuilderX.*`, `Program Files` and `/Applications` locations). Exit codes: 0 = output ready,
+1 = build failed or output rejected, 2 = CLI not found.
+
+To see what the session Links and Memory pages actually render, run the end-to-end check. It starts
+its own static server, seeds a fake pairing plus cached history/memory, and asserts that both pages
+show content and that a link in the transcript is actually clickable (needs a Chromium/Edge with a
+DevTools port open):
+
+```bash
+node pilot/scripts/verify-app-h5.mjs                     # default output + CDP 9333 + port 4189
+node pilot/scripts/verify-app-h5.mjs --cdp 9334 --json   # other debug port / machine-readable output
+```
+
+Exit codes: 0 = all three assertions pass, 1 = an assertion failed (details on stderr), 2 = build
+output missing or the debug port is unreachable.
+
+To re-inject the shell without rebuilding, use the lower-level script:
 
 ```bash
 node pilot/scripts/prepare-app-web.mjs            # copy files + self-check
@@ -200,7 +225,9 @@ It does four things:
 
 1. copies `pwa/manifest.webmanifest` and `pwa/sw.js` to the build root;
 2. writes the real build output listing (`assets/`, `static/`, filenames carry a content hash) into
-   `ASSET_PRECACHE` inside `sw.js`, so the very first visit pre-caches the whole site;
+   `ASSET_PRECACHE` inside `sw.js`, so the very first visit pre-caches the whole site, and appends an
+   8-character content fingerprint to the cache-name prefix (`pilot-link-pwa-v2-<hash>`) so a release
+   actually evicts the caches of the previous one;
 3. rewrites leftover absolute `/assets/…`, `/static/…` references in `index.html` to `./assets/…`,
    so one build works both at the domain root and under a `/app/` sub-path;
 4. checks that `index.html` references the manifest and a theme-color, and that every icon in the
@@ -220,6 +247,19 @@ Deployment needs **HTTPS**. Browsers disable Service Workers over plain HTTP (in
 the page still works there, it just has no offline or install support — the registration helper in
 `main.js` returns early outside a secure context instead of logging errors.
 
+The live copy is served from `https://pilot.medpilot.cc/app/` (this replaced the hand-written
+companion PWA that used to live on the same path):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File pilot/scripts/deploy-app-web.ps1 `
+  -User root -Server medpilot.cc -RemoteOwner www:www
+```
+
+The script first runs `build-app-web.mjs --check` so a stale build cannot be published, snapshots the
+live `/app/` into `/www/wwwroot/site-backups/`, uploads into `/app.new` comparing every SHA-256,
+swaps the directory, then re-downloads `index.html`, `sw.js` and `manifest.webmanifest` over HTTPS to
+compare bytes. `-WhatIf` lists the files it would upload; `-SkipBackup` skips the snapshot.
+
 Where the web build differs from the Android app:
 
 | Capability | Android app | Web / PWA |
@@ -229,9 +269,12 @@ Where the web build differs from the Android app:
 | System share | `plus.share` | `navigator.share`, clipboard fallback |
 | HTML preview | isolated WebView | download only, never executed (pairing secrets live on this origin) |
 | Updates | download wgt / APK | reload the page for the latest version |
+| Pairing by QR | `uni.scanCode` opens the camera | browsers cannot open the camera here, so the primary entry is pasting the pairing link |
 
 The settings page branches on `lib/platform.js`: in a browser it hides native-only entries
 (background keep-alive, download cache) and shows the matching explanation and reload button instead.
+The pairing page uses the same `isWebRuntime()` check to swap *Scan the QR code* for a *Paste a pairing
+link* hint, and reads the clipboard through `navigator.clipboard.readText()` when available.
 
 ## Packaging for Android
 
