@@ -2,10 +2,23 @@
   <view class="evolution-page" :class="[{ 'theme-light': store.theme === 'light' }, 'accent-' + store.accent, 'btn-scheme-' + store.buttonScheme, 'font-' + store.fontSize, 'contrast-' + store.contrast, 'saturation-' + store.saturation]">
     <view class="evo-topbar">
       <view class="evo-back" @click="back"><view class="back-arrow"></view></view>
-      <text class="evo-title">{{ t('自我进化') }}</text>
+      <text class="evo-title">{{ t('进化') }}</text>
       <text class="evo-refresh" :class="{ disabled: store.evolutionLoading }" @click="refreshNow">
         {{ store.evolutionLoading ? t('刷新中…') : t('刷新') }}
       </text>
+    </view>
+
+    <!-- 自进化相关的能力不再各开一页：内视 / 模块自检 / 反思 / 探索学习都在这一页靠页签切换。 -->
+    <view class="evo-tabs">
+      <view
+        v-for="tab in tabs"
+        :key="tab.id"
+        class="evo-tab"
+        :class="{ active: activeTab === tab.id }"
+        @click="selectTab(tab.id)"
+      >
+        <text class="evo-tab-label">{{ tab.label }}</text>
+      </view>
     </view>
 
     <scroll-view
@@ -16,7 +29,7 @@
       :refresher-background="refresherBackground"
       @refresherrefresh="onPullRefresh"
     >
-      <view class="evo-content">
+      <view v-if="activeTab === 'evolution'" class="evo-content">
         <view v-if="!connected" class="evo-empty">
           <text class="evo-empty-title">{{ t('还没有连接电脑') }}</text>
           <text class="evo-empty-hint">{{ t('连接电脑后才能查看和控制自进化。') }}</text>
@@ -399,6 +412,19 @@
           <view class="evo-bottom-gap"></view>
         </template>
       </view>
+
+      <!-- 四个页签的面板本体：每个面板自己拉数据，切回来会重建一次。 -->
+      <view v-else class="evo-panel">
+        <self-check-panel v-if="activeTab === 'introspect'" />
+        <module-check-panel v-else-if="activeTab === 'module-check'" />
+        <reflect-panel
+          v-else-if="activeTab === 'reflect'"
+          :desktop-online="connected"
+          :model-options="sessionModelOptions"
+          :models-loading="modelsLoading"
+        />
+        <learning-panel v-else-if="activeTab === 'learning'" />
+      </view>
     </scroll-view>
 
     <app-sheet
@@ -479,8 +505,13 @@
 import AppDialog from '../../components/app-dialog/app-dialog.vue'
 import AppDialogHost from '../../components/app-dialog-host/app-dialog-host.vue'
 import AppSheet from '../../components/app-sheet/app-sheet.vue'
+import LearningPanel from '../../components/learning-panel/learning-panel.vue'
+import ModuleCheckPanel from '../../components/module-check-panel/module-check-panel.vue'
+import ReflectPanel from '../../components/reflect-panel/reflect-panel.vue'
+import SelfCheckPanel from '../../components/self-check-panel/self-check-panel.vue'
 import { relativeTime } from '../../lib/format.js'
 import { fuzzyFieldsScore } from '../../lib/fuzzy.js'
+import { modelOptionLabel } from '../../lib/model-label.js'
 import { openAppDialog } from '../../lib/dialog.js'
 import { t } from '../../lib/i18n.js'
 import {
@@ -491,6 +522,7 @@ import {
   onAppShow,
   refreshEvolution,
   refreshSessions,
+  request,
   selectSession,
   setEvolutionWorkspace,
   startNewChat,
@@ -509,7 +541,15 @@ const EMPTY_DIALOG = {
 }
 
 export default {
-  components: { AppDialog, AppDialogHost, AppSheet },
+  components: {
+    AppDialog,
+    AppDialogHost,
+    AppSheet,
+    LearningPanel,
+    ModuleCheckPanel,
+    ReflectPanel,
+    SelfCheckPanel
+  },
   data() {
     return {
       refreshing: false,
@@ -517,6 +557,11 @@ export default {
       workspacePickerVisible: false,
       workspaceQuery: '',
       textDialog: { ...EMPTY_DIALOG },
+      // 页签把自进化的四个子能力收进同一页；默认仍是进化本身。
+      activeTab: 'evolution',
+      // 反思面板的模型下拉复用设置页的取数方式。
+      modelSettings: null,
+      modelsLoading: false,
       // 列表默认只看版本、状态和分数；详情按条目展开，刷新后仍保留展开状态。
       profileOpen: {}
     }
@@ -536,6 +581,27 @@ export default {
     },
     connected() {
       return store.agentOnline
+    },
+    tabs() {
+      return [
+        { id: 'evolution', label: t('自我进化') },
+        { id: 'introspect', label: t('内视') },
+        { id: 'module-check', label: t('模块自检') },
+        { id: 'reflect', label: t('反思') },
+        { id: 'learning', label: t('探索学习') }
+      ]
+    },
+    modelResources() {
+      const resources = this.modelSettings && this.modelSettings.resources
+      return Array.isArray(resources) ? resources : []
+    },
+    sessionModelOptions() {
+      // 停用的资源也列出来：反思面板选的是「用哪个模型审阅」，与启用状态无关。
+      return this.modelResources.map((resource) => ({
+        id: resource.id,
+        title: `${modelOptionLabel(resource.label || resource.model || t('未命名模型'), resource.tag)} · ${resource.model || t('未配置')}`,
+        hint: resource.enabled === false ? t('已停用') : ''
+      }))
     },
     refreshingBackground() {
       return store.theme === 'light' ? '#ffffff' : '#000000'
@@ -637,8 +703,12 @@ export default {
         ''
       if (path) store.evolutionWorkspace = path
     }
-    void this.refreshNow()
-    this.startPolling()
+    if (this.activeTab === 'evolution') {
+      void this.refreshNow()
+      this.startPolling()
+    } else if (this.activeTab === 'reflect') {
+      void this.loadModels()
+    }
   },
   onHide() {
     this.stopPolling()
@@ -655,6 +725,31 @@ export default {
   },
   methods: {
     t,
+    /** 页签切换：只有进化本体需要轮询，其余面板进页签时自己拉一次。 */
+    selectTab(id) {
+      if (this.activeTab === id) return
+      this.activeTab = id
+      if (id === 'evolution') {
+        void this.refreshNow()
+        this.startPolling()
+        return
+      }
+      this.stopPolling()
+      if (id === 'reflect') void this.loadModels()
+    },
+    async loadModels() {
+      if (!store.agentOnline || this.modelsLoading) return
+      this.modelsLoading = true
+      try {
+        const data = await request('models.get', {}, 20_000)
+        if (data && Array.isArray(data.resources)) this.modelSettings = data
+      } catch {
+        // 旧版电脑端没有 models.get：模型下拉留空，其它反思配置照常可用。
+        this.modelSettings = null
+      } finally {
+        this.modelsLoading = false
+      }
+    },
     /** 电脑端的进化记录用 ISO 时间；列表里的会话用毫秒时间戳。 */
     formatWhen(value) {
       const time = typeof value === 'number' ? value : Date.parse(String(value || ''))
@@ -674,6 +769,11 @@ export default {
     },
     async onPullRefresh() {
       if (this.refreshing) return
+      if (this.activeTab !== 'evolution') {
+        // 其它页签的下拉只刷该面板自己的数据，不碰进化记录。
+        if (this.activeTab === 'reflect') void this.loadModels()
+        return
+      }
       this.refreshing = true
       try {
         await this.refreshNow()
@@ -1245,7 +1345,8 @@ export default {
   color: var(--dim);
 }
 .evo-scroll {
-  height: calc(100vh - var(--status-bar-height) - 100rpx);
+  /* 标题栏 + 页签行各占一截，剩下都给滚动区。 */
+  height: calc(100vh - var(--status-bar-height) - 170rpx);
   /* 滚动容器会裁掉横向阴影，向左右借 24rpx 页面留白；宽度同步加宽，
      否则只向左偏移，右侧会空出一条。内容再用内边距放回原位。 */
   width: calc(100% + 48rpx);
@@ -1253,6 +1354,36 @@ export default {
 }
 .evo-content {
   /* 顶部留白让第一张卡片的上方光晕有地方画。 */
+  padding: 12rpx 24rpx 40rpx;
+}
+/* 页签：一行横排，靠 accent 底色区分当前页，避免再加一行副标题。 */
+.evo-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 0 4rpx 16rpx;
+  overflow: hidden;
+}
+.evo-tab {
+  flex: none;
+  padding: 8rpx 16rpx;
+  border-radius: 999rpx;
+  background: var(--surface);
+  box-shadow: var(--control-shadow);
+}
+.evo-tab.active {
+  background: var(--accent-wash);
+}
+.evo-tab-label {
+  color: var(--dim);
+  font-size: calc(22rpx * var(--font-scale));
+  line-height: 1.4;
+}
+.evo-tab.active .evo-tab-label {
+  color: var(--accent-soft);
+  font-weight: 600;
+}
+.evo-panel {
   padding: 12rpx 24rpx 40rpx;
 }
 .evo-empty {

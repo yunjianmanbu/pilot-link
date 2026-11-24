@@ -29,9 +29,9 @@ import { readClientTree } from './client-source.mjs'
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
 
-const page = read('pages/self-check/index.vue')
+const page = read('components/self-check-panel/self-check-panel.vue')
+const evolution = read('pages/evolution/index.vue')
 const pages = read('pages.json')
-const settings = read('pages/settings/index.vue')
 const store = read('store/index.js')
 // 协议分支已拆到 companion/handlers/*，按目录读整份协议。
 const protocol = readClientTree('src/main/companion')
@@ -124,13 +124,14 @@ test('时间戳按本地时间格式化，坏时间给出明确文案', () => {
   assert.equal(reportStamp('bad'), '时间未知')
 })
 
-test('内视页已注册，设置页有入口', () => {
-  assert.ok(pages.includes('"pages/self-check/index"'), 'pages.json 缺少内视页')
-  assert.ok(settings.includes('@click="openSelfCheck"'), '设置页缺少内视入口')
+test('内视面板内嵌在进化页，不再单独注册页面', () => {
+  assert.ok(!pages.includes('"pages/self-check/index"'), '内视页应已并入进化页')
+  assert.ok(evolution.includes('<self-check-panel'), '进化页缺少内视页签')
   assert.ok(
-    settings.includes("uni.navigateTo({ url: '/pages/self-check/index' })"),
-    '设置页入口没有跳到内视页'
+    evolution.includes("activeTab === 'introspect'"),
+    '进化页页签没有渲染内视面板'
   )
+  assert.ok(page.includes("t('内视')"), '面板缺少标题')
 })
 
 test('store 的内视通道走电脑端 selfCheck.run', () => {

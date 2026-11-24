@@ -35,6 +35,29 @@ const SHELL_ASSETS = ['./', './manifest.webmanifest']
  */
 const ASSET_PRECACHE = []
 
+/**
+ * 读出首屏文档自己引用的 assets（主包 JS / CSS / uni.css）。
+ *
+ * 这些是本版本的入口产物，install 时必须真的进缓存。全都吞错会留下一个坏状态：
+ * install 失败被静默忽略 → SW 照样激活并 claim → 页面按 cacheFirst 查主包、缓存
+ * 里没有 → 回源 → 服务器上只剩新哈希、旧文件已经 404 → 整页空白。宁可这次
+ * install 失败、让仍在正常工作的旧 SW 继续服务，也不要接管一个缺主包的页面。
+ *
+ * 拿不到文档（首装网络还没就绪）时返回空数组，退化成「全部可容忍」。
+ */
+async function readEntryAssets() {
+  try {
+    const response = await fetch(new Request('./', { cache: 'no-store' }))
+    if (!response.ok || typeof response.text !== 'function') return []
+    const html = await response.text()
+    return [...html.matchAll(/(?:src|href)="\.?\/?(assets\/[^"]+)"/g)].map(
+      (match) => `./${match[1]}`
+    )
+  } catch (error) {
+    return []
+  }
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
@@ -44,9 +67,15 @@ self.addEventListener('install', (event) => {
       // 也不走 HTTP 缓存：Safari 的条件请求会拿到没有响应体的 304。
       const put = (cache, url) =>
         cache.add(new Request(url, { cache: 'no-store' })).catch(() => {})
+      // 入口产物例外：不吞错，失败就让整次 install 失败。
+      const entry = await readEntryAssets()
+      const required = (url) => entry.includes(url)
       await Promise.all([
         ...SHELL_ASSETS.map((url) => put(shell, url)),
-        ...ASSET_PRECACHE.map((url) => put(assets, url))
+        ...ASSET_PRECACHE.filter((url) => !required(url)).map((url) => put(assets, url)),
+        ...ASSET_PRECACHE.filter(required).map((url) =>
+          assets.add(new Request(url, { cache: 'no-store' }))
+        )
       ])
       await self.skipWaiting()
     })()

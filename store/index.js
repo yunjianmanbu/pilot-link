@@ -25,6 +25,7 @@ import { createKeyPair, exportKey } from '../lib/pair-crypto.js'
 import { joinPairing } from '../lib/pairing.js'
 import { normalizePlan } from '../lib/plan.js'
 import { decideTailSync } from '../lib/tail-sync.js'
+import { earlierContinue } from '../lib/history-page.js'
 import { keepLinkAlive, releaseLinkKeepAlive } from '../lib/background-link.js'
 import {
   BG_HIDE_KEY,
@@ -135,6 +136,16 @@ export const store = reactive({
   evolutionPersonalLoading: false,
   evolutionPersonalError: '',
   evolutionPersonalBusy: null,
+  // 反思（自问）：配置与报告都留在电脑端，手机只读写同一份并手动触发一次。
+  // null 表示还没读过；reflectSupported=false 表示电脑端版本太旧。
+  reflect: null,
+  reflectLoading: false,
+  reflectError: '',
+  reflectSupported: null,
+  // 正在进行的动作（saving / running / testing / clearing），用于禁用按钮。
+  reflectAction: '',
+  reflectReport: null,
+  reflectReportLoading: false,
   themeMode: 'system',
   theme: 'dark',
   // 字号：standard（默认原字号）/ large / xlarge，页面根节点切换 font-* class。
@@ -1277,6 +1288,9 @@ export function onEvent(event) {
       if (event.settings && store.evolution) {
         store.evolution.autoEvolve = event.settings.autoEvolve === true
       }
+      // 反思也会由电脑端定时或运行失败触发，跑完推一条 settings.changed；
+      // 只有打开过反思面板才顺手刷新，避免每台手机都跟着拉一次报告。
+      if (store.reflect) void loadReflect()
       break
     case 'workspace.changed':
       // 手机端新建个人源码工作区后，会话页要能马上看到它。
@@ -1496,6 +1510,139 @@ export async function evolutionAction(action, params = {}) {
   } finally {
     store.evolutionAction = ''
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* 反思（自问）                                                        */
+/* ------------------------------------------------------------------ */
+
+// 反思设置就是一份 store 快照，读一次几毫秒；不做缓存反而避免手机显示陈旧开关。
+const REFLECT_TIMEOUT = 20_000
+let reflectPromise = null
+
+/** 电脑端不认识 reflect.* 时（旧版本）返回 true，页面据此收起整个面板。 */
+function unsupportedReflect(error) {
+  const message = error instanceof Error ? error.message : String(error || '')
+  return message.includes('不支持该操作') || message.includes('不支持手机控制反思')
+}
+
+function offlineReflect() {
+  store.reflect = null
+  store.reflectSupported = null
+  store.reflectError = ''
+  store.reflectReport = null
+  return null
+}
+
+export async function loadReflect() {
+  if (!client?.isConnected()) return offlineReflect()
+  if (reflectPromise) return reflectPromise
+  store.reflectLoading = true
+  const promise = (async () => {
+    try {
+      const data = await request('reflect.state', {}, REFLECT_TIMEOUT)
+      if (data && typeof data === 'object' && data.settings) {
+        store.reflect = data
+        store.reflectSupported = true
+        store.reflectError = ''
+        return data
+      }
+      store.reflectError = t('电脑端返回的数据不完整。')
+      return null
+    } catch (error) {
+      if (unsupportedReflect(error)) {
+        store.reflectSupported = false
+        store.reflectError = ''
+      } else {
+        store.reflectError =
+          error instanceof Error ? error.message : String(error || t('读取失败'))
+      }
+      return null
+    } finally {
+      store.reflectLoading = false
+      reflectPromise = null
+    }
+  })()
+  reflectPromise = promise
+  return promise
+}
+
+/**
+ * 保存反思设置。字段名与电脑端 `SettingsUpdate` 一致（`enabled`/`emailTo`…），
+ * 授权码留空表示保留原值，不传或传 null 才清除。
+ */
+export async function saveReflectSettings(patch) {
+  if (!client?.isConnected()) throw new Error(t('尚未连接电脑'))
+  store.reflectAction = 'saving'
+  try {
+    const data = await request('reflect.settings', { settings: patch }, REFLECT_TIMEOUT)
+    if (data && typeof data === 'object' && data.settings) {
+      store.reflect = data
+      store.reflectSupported = true
+      store.reflectError = ''
+      return data
+    }
+    return null
+  } finally {
+    store.reflectAction = ''
+  }
+}
+
+/** 手动触发一次反思。电脑端后台跑几十秒，结果通过 settings.changed 推回来。 */
+export async function runReflectNow() {
+  if (!client?.isConnected()) throw new Error(t('尚未连接电脑'))
+  store.reflectAction = 'running'
+  try {
+    const data = await request('reflect.now', {}, REFLECT_TIMEOUT)
+    if (data?.state?.settings) store.reflect = data.state
+    return data
+  } finally {
+    store.reflectAction = ''
+  }
+}
+
+/** 发一封测试邮件，返回 { ok, error }。失败不抛，交给页面显示具体原因。 */
+export async function sendReflectTestMail(to) {
+  if (!client?.isConnected()) throw new Error(t('尚未连接电脑'))
+  store.reflectAction = 'mail'
+  try {
+    const data = await request('reflect.mail.test', { to }, 60_000)
+    return { ok: data?.ok === true, error: data?.error || '' }
+  } finally {
+    store.reflectAction = ''
+  }
+}
+
+export async function clearReflectReports() {
+  if (!client?.isConnected()) throw new Error(t('尚未连接电脑'))
+  store.reflectAction = 'clearing'
+  try {
+    const data = await request('reflect.reports.clear', {}, REFLECT_TIMEOUT)
+    if (data && typeof data === 'object' && data.settings) store.reflect = data
+    store.reflectReport = null
+    return data
+  } finally {
+    store.reflectAction = ''
+  }
+}
+
+/** 报告详情：列表只带概要，点开才取发现与依据正文。 */
+export async function loadReflectReport(reportId) {
+  const id = String(reportId || '')
+  if (!id) return null
+  if (!client?.isConnected()) return null
+  store.reflectReportLoading = true
+  try {
+    const data = await request('reflect.report', { reportId: id }, REFLECT_TIMEOUT)
+    store.reflectReport = data?.report || null
+    return store.reflectReport
+  } finally {
+    store.reflectReportLoading = false
+  }
+}
+
+export function closeReflectReport() {
+  store.reflectReport = null
 }
 
 export async function refreshSessions(force = false) {
@@ -2311,17 +2458,39 @@ export async function loadEarlier() {
   const token = store.historyToken
   store.historyLoading = true
   try {
-    const data = await request('sessions.get', {
-      sessionId,
-      before: store.historyBefore,
-      limit: HISTORY_PAGE_SIZE
-    })
-    if (token !== store.historyToken || store.currentSessionId !== sessionId) return
-    const raw = (Array.isArray(data?.session?.messages) ? data.session.messages : [])
-      .map(normalizeMessage)
-      .filter(Boolean)
-    const nextBefore = data?.hasMore && raw.length ? raw[0].id : null
-    const rows = raw.map(conversationOnly).filter(Boolean)
+    // 一页「加载更早」必须落回一页真正的问答正文。
+    // 电脑端认 conversation 参数时一页就是 25 条正文；旧版电脑端会忽略它、
+    // 仍返回 25 条原始消息（其中绝大多数是工具调用与工具结果），过滤后常常
+    // 一条正文都没有，所以这一次点击里继续往前补页。
+    let before = store.historyBefore
+    let rows = []
+    let nextBefore = null
+    for (let round = 0; ; round += 1) {
+      const data = await request('sessions.get', {
+        sessionId,
+        before,
+        limit: HISTORY_PAGE_SIZE,
+        conversation: true
+      })
+      if (token !== store.historyToken || store.currentSessionId !== sessionId) return
+      const raw = (Array.isArray(data?.session?.messages) ? data.session.messages : [])
+        .map(normalizeMessage)
+        .filter(Boolean)
+      const pageRows = raw.map(conversationOnly).filter(Boolean)
+      rows = [...pageRows, ...rows]
+      const hasMore = data?.hasMore === true
+      nextBefore = hasMore && raw.length ? raw[0].id : null
+      if (!nextBefore) break
+      if (!earlierContinue({
+        round,
+        received: raw.length,
+        conversationCount: pageRows.length,
+        hasMore
+      })) {
+        break
+      }
+      before = nextBefore
+    }
     const fresh = rows.filter((message) => message?.id && !store.messageIds[message.id])
     store.messages = [...fresh, ...store.messages]
     for (const message of fresh) store.messageIds[message.id] = true

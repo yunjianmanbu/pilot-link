@@ -2,8 +2,8 @@
   "name": "Pilot Link",
   "appid": "__UNI__71B4F08",
   "description": "Pilot Link：手机端连接你电脑上的 Pilot 智能体，查看会话、继续对话、审批工具调用。消息端到端加密。",
-  "versionName": "1.1.9",
-  "versionCode": "149",
+  "versionName": "1.1.14",
+  "versionCode": "153",
   "transformPx": false,
   "app-plus": {
     "usingComponents": true,

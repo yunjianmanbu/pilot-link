@@ -8,9 +8,9 @@ import { readClient, readClientTree } from './client-source.mjs'
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
 
-const page = read('pages/learning/index.vue')
+const page = read('components/learning-panel/learning-panel.vue')
+const evolution = read('pages/evolution/index.vue')
 const pages = read('pages.json')
-const settings = read('pages/settings/index.vue')
 const store = read('store/index.js')
 // 协议分支已拆到 companion/handlers/*，按目录读整份协议。
 const protocol = readClientTree('src/main/companion')
@@ -20,13 +20,14 @@ const locale = read('lib/locale-en.js')
 
 // 拆仓后本仓库不含桌面端源码与工作区文档：读不到就跳过，而不是判失败。
 const skipCross = protocol != null && learning != null ? false : '独立仓库不含桌面端源码（pilot/pilot）与工作区文档（pilot/docs），跳过跨仓库一致性检查'
-test('自主探索学习页已注册，设置页有入口', { skip: skipCross }, () => {
-  assert.ok(pages.includes('"pages/learning/index"'), 'pages.json 缺少自主探索学习页')
-  assert.ok(settings.includes('@click="openLearning"'), '设置页缺少自主探索学习入口')
+test('自主探索学习面板内嵌在进化页，不再单独注册页面', { skip: skipCross }, () => {
+  assert.ok(!pages.includes('"pages/learning/index"'), '学习页应已并入进化页')
+  assert.ok(evolution.includes('<learning-panel'), '进化页缺少探索学习页签')
   assert.ok(
-    settings.includes("uni.navigateTo({ url: '/pages/learning/index' })"),
-    '设置页入口没有跳到学习页'
+    evolution.includes("activeTab === 'learning'"),
+    '进化页页签没有渲染探索学习面板'
   )
+  assert.ok(page.includes("t('自主探索学习')"), '面板缺少标题')
 })
 
 test('store 通过电脑端协议读取学习状态和保存设置', { skip: skipCross }, () => {

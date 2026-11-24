@@ -383,8 +383,10 @@ const precache = listPrecacheFiles(webDir)
  * 2026-11 的 iOS 白屏就是吃了这个亏（SW 字节变了，但页面认的指纹没变）。
  *
  * 3：首屏自愈块加入 ?reset=1 逃生入口与失败页的「彻底重置」。
+ * 4：install 阶段要求首屏文档自己引用的入口产物（主包 JS / CSS / uni.css）必须进缓存，
+ *    不再把入口资源的失败一并吞掉 —— 否则会出现「新 SW 已接管、缓存里却没有主包」的白屏。
  */
-const SHELL_EPOCH = 3
+const SHELL_EPOCH = 4
 const swTemplate = readFileSync(join(PWA_DIR, 'sw.js'), 'utf8')
 /**
  * 首屏自愈块的形状（buildId 用占位符，正文与真实产物逐字相同）。

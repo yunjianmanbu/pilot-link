@@ -303,6 +303,8 @@
       </text>
     </view>
 
+    <!-- 反思及其它自进化能力统一放在「进化」页，设置页不再重复入口。 -->
+
     <view v-if="activeSection === 'settings-appearance'" id="settings-appearance" class="card">
       <text class="card-title">{{ t('外观') }}</text>
       <view class="theme-options">
@@ -517,15 +519,13 @@
       <view class="card-actions">
         <button class="btn ghost small-btn" @click="openTools">{{ t('查看工具清单') }}</button>
         <button class="btn ghost small-btn" @click="openQuick">{{ t('编辑快捷指令') }}</button>
-        <button class="btn ghost small-btn" @click="openSelfCheck">{{ t('内视') }}</button>
-        <button class="btn ghost small-btn" @click="openModuleCheck">{{ t('模块自检') }}</button>
-        <button class="btn ghost small-btn" @click="openLearning">{{ t('自主探索学习') }}</button>
+        <button class="btn ghost small-btn" @click="openEvolution">{{ t('进化') }}</button>
       </view>
       <text class="hint">
         {{ t('只读展示；沙箱、权限和工具启停仍在电脑端设置。') }}
       </text>
       <text class="hint">
-        {{ t('内视、模块自检与自主探索学习可以在手机上操作。') }}
+        {{ t('内视、模块自检、反思与探索学习都在「进化」页的页签里。') }}
       </text>
     </view>
 
@@ -1550,14 +1550,8 @@ export default {
       const approved = tool?.approved ? t("已批准") : t("未批准")
       return `${enabled} · ${approved}`
     },
-    openSelfCheck() {
-      uni.navigateTo({ url: '/pages/self-check/index' })
-    },
-    openModuleCheck() {
-      uni.navigateTo({ url: '/pages/module-check/index' })
-    },
-    openLearning() {
-      uni.navigateTo({ url: '/pages/learning/index' })
+    openEvolution() {
+      uni.navigateTo({ url: '/pages/evolution/index' })
     },
     openConnectPhone() {
       uni.navigateTo({ url: '/pages/connect-phone/index' })

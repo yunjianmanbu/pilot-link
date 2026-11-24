@@ -6,7 +6,7 @@
     </view>
 
     <view class="pair-head">
-      <view class="logo">C</view>
+      <image class="logo" src="/static/icons/192.png" mode="aspectFit" />
       <text class="pair-title">{{ addMode ? t('连接另一台电脑') : t('连接 Pilot') }}</text>
       <text class="pair-sub">{{ t('在电脑的「Pilot → 手机配对」里生成二维码，用手机扫描即可连接。') }}</text>
     </view>
@@ -19,7 +19,7 @@
 
     <view v-else class="card">
       <text class="card-title">{{ webRuntime ? t('粘贴配对链接') : t('扫码配对') }}</text>
-      <button v-if="!webRuntime" class="btn primary big" :disabled="store.pairBusy" @click="scan">
+      <button v-if="!webRuntime" class="btn primary big block" :disabled="store.pairBusy" @click="scan">
         {{ store.pairBusy ? t('正在配对…') : t('扫描电脑上的二维码') }}
       </button>
       <text v-else class="muted">{{ t('浏览器里不能直接调摄像头扫码，把电脑上的配对链接粘贴到下方即可。') }}</text>
@@ -50,7 +50,7 @@
           <text class="preview-label">{{ t('手机名称') }}</text>
           <input v-model="phoneName" class="preview-input" :maxlength="40" />
         </view>
-        <button class="btn primary big" :disabled="store.pairBusy" @click="confirm">
+        <button class="btn primary big block" :disabled="store.pairBusy" @click="confirm">
           {{ store.pairBusy ? t('等待电脑确认…') : t('开始配对') }}
         </button>
         <text v-if="store.pairBusy" class="muted center">{{ t('请回到电脑上确认这次配对。') }}</text>
@@ -268,17 +268,12 @@ export default {
   align-items: center;
   margin-bottom: 40rpx;
 }
+/* App 品牌图标：绿底白色 P + 右下角白点，圆角与图标自身的 14.5/64 比例对齐（112rpx×0.226≈26rpx）。 */
 .logo {
   width: 112rpx;
   height: 112rpx;
-  border-radius: 28rpx;
-  background: var(--accent-gradient);
-  color: var(--accent-ink);
-  font-size: calc(54rpx * var(--font-scale));
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  border-radius: 26rpx;
+  box-shadow: 0 12rpx 30rpx rgba(74, 222, 128, 0.24);
 }
 .pair-title {
   margin-top: 28rpx;

@@ -63,7 +63,14 @@ test('switching language translates, interpolates and persists', () => {
 function sourceFiles(dir) {
   const out = []
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === 'node_modules' || entry.name === 'unpackage' || entry.name.startsWith('.')) {
+    // dist / unpackage 是构建产物，里面压着旧版本的每条文案；把它们算进「源码用到的 key」
+    // 会让「字典里有没有多余条目」这项检查永远通过，所以只扫真正的源码。
+    if (
+      entry.name === 'node_modules' ||
+      entry.name === 'unpackage' ||
+      entry.name === 'dist' ||
+      entry.name.startsWith('.')
+    ) {
       continue
     }
     const full = path.join(dir, entry.name)

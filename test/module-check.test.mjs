@@ -8,9 +8,9 @@ import { readClientTree } from './client-source.mjs'
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8')
 
-const page = read('pages/module-check/index.vue')
+const page = read('components/module-check-panel/module-check-panel.vue')
+const evolution = read('pages/evolution/index.vue')
 const pages = read('pages.json')
-const settings = read('pages/settings/index.vue')
 const store = read('store/index.js')
 // 电脑端把各个 case 拆到 companion/handlers/* 之后，整份协议要按目录读（含 constants.ts）。
 const protocol = readClientTree('src/main/companion')
@@ -19,16 +19,14 @@ const locale = read('lib/locale-en.js')
 
 // 拆仓后本仓库不含桌面端源码与工作区文档：读不到就跳过，而不是判失败。
 const skipCross = protocol != null ? false : '独立仓库不含桌面端源码（pilot/pilot）与工作区文档（pilot/docs），跳过跨仓库一致性检查'
-test('模块自检页已注册，设置页有入口', () => {
-  assert.ok(pages.includes('"pages/module-check/index"'), 'pages.json 缺少自检页')
+test('模块自检面板内嵌在进化页，不再单独注册页面', () => {
+  assert.ok(!pages.includes('"pages/module-check/index"'), '自检页应已并入进化页')
+  assert.ok(evolution.includes('<module-check-panel'), '进化页缺少模块自检页签')
   assert.ok(
-    settings.includes('@click="openModuleCheck"'),
-    '设置页缺少模块自检入口'
+    evolution.includes("activeTab === 'module-check'"),
+    '进化页页签没有渲染模块自检面板'
   )
-  assert.ok(
-    settings.includes("uni.navigateTo({ url: '/pages/module-check/index' })"),
-    '设置页入口没有跳到自检页'
-  )
+  assert.ok(page.includes("t('模块自检')"), '面板缺少标题')
 })
 
 test('store 的五个通道分别走电脑端协议', { skip: skipCross }, () => {

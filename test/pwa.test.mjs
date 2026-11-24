@@ -129,6 +129,8 @@ function runServiceWorker(options = {}) {
       return raw
     }
   }
+  /* 让指定资源在 cache.add 时失败，用来区分「吐掉错误」与「让整次安装失败」。 */
+  const failing = options.failingAssets || []
   for (const name of options.caches || []) cacheStore.set(name, new Map())
   for (const [name, entries] of Object.entries(options.cacheEntries || {})) {
     const store = new Map()
@@ -142,7 +144,9 @@ function runServiceWorker(options = {}) {
       return {
         add: async (request) => {
           // 记原样（相对路径），断言看的就是注入进去的那串清单。
-          added.push(typeof request === 'string' ? request : String(request.url ?? request))
+          const raw = typeof request === 'string' ? request : String(request.url ?? request)
+          added.push(raw)
+          if (failing.includes(raw)) throw new Error(`404 ${raw}`)
         },
         put: async (request, response) => {
           store.set(resolveKey(request), response)
@@ -195,6 +199,13 @@ function runServiceWorker(options = {}) {
   if (options.version) {
     source = source.replace(VERSION_DECL, `const VERSION = '${options.version}'`)
   }
+  // 模板里清单是空的，构建时才注入；这里注入一份，才能验证「入口产物不吐错」。
+  if (options.precache) {
+    source = source.replace(
+      'const ASSET_PRECACHE = []',
+      `const ASSET_PRECACHE = ${JSON.stringify(options.precache)}`
+    )
+  }
   vm.runInContext(
     source + '\n;globalThis.__sw = { VERSION, BUILD, SHELL_CACHE, ASSET_CACHE }',
     context
@@ -232,6 +243,40 @@ test('SW 安装时预缓存壳文件；换代时不会在 activate 里删掉旧�
    * 那份 HTML 引用的带哈希资源再也取不回来。清理必须等页面确认本版本后再做。
    */
   assert.deepEqual(deleted, [], 'activate 阶段不该删任何缓存')
+})
+
+test('入口产物进不了缓存时整次安装失败，而不是接管一个缺主包的页面', async () => {
+  /*
+   * 白屏回归点（2026-11-22）：发布是整目录替换，上一代的 assets/index-<hash>.js
+   * 会立刻 404。若 install 把主包抓取失败也吐成 {}，SW 照样激活并 claim，页面按
+   * cacheFirst 查主包、缓存里没有 → 回源 → 404 → 整页空白。宁可这次装不上，
+   * 让仍在工作的旧 SW 继续服务。
+   */
+  const html = '<script src="./assets/index-abc.js"></script><link rel="stylesheet" href="./assets/uni.css">'
+  const withHtml = (extra = {}) => ({
+    caches: [],
+    precache: ['./assets/index-abc.js', './assets/uni.css', './assets/chunk.js'],
+    network: async () => ({ ok: true, status: 200, text: async () => html, clone() { return this } }),
+    ...extra
+  })
+
+  // 主包 404：install 必须整体失败。
+  const broken = runServiceWorker(withHtml({ failingAssets: ['./assets/index-abc.js'] }))
+  let rejected = null
+  broken.listeners.get('install')({ waitUntil: (promise) => (rejected = promise) })
+  await rejected.then(
+    () => {
+      throw new Error('入口主包取不到时 install 不该成功')
+    },
+    () => {}
+  )
+
+  // 非入口的分包失败：仍然可以容忍，安装照旧完成，否则会大面积卡住更新。
+  const partial = runServiceWorker(withHtml({ failingAssets: ['./assets/chunk.js'] }))
+  let settled = null
+  partial.listeners.get('install')({ waitUntil: (promise) => (settled = promise) })
+  await settled
+  assert.ok(partial.added.includes('./assets/chunk.js'), '分包也应该尝试预缓存')
 })
 
 test('SW 只在页面确认本版本构建后才回收上一代缓存', async () => {

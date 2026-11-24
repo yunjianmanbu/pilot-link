@@ -188,39 +188,6 @@
       }
     },
     {
-      "path": "pages/module-check/index",
-      "style": {
-        "navigationStyle": "custom",
-        "backgroundColor": "#000000",
-        "app-plus": {
-          "titleNView": false,
-          "bounce": "none"
-        }
-      }
-    },
-    {
-      "path": "pages/self-check/index",
-      "style": {
-        "navigationStyle": "custom",
-        "backgroundColor": "#000000",
-        "app-plus": {
-          "titleNView": false,
-          "bounce": "none"
-        }
-      }
-    },
-    {
-      "path": "pages/learning/index",
-      "style": {
-        "navigationStyle": "custom",
-        "backgroundColor": "#000000",
-        "app-plus": {
-          "titleNView": false,
-          "bounce": "none"
-        }
-      }
-    },
-    {
       "path": "pages/connect-phone/index",
       "style": {
         "navigationStyle": "custom",

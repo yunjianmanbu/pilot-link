@@ -18,7 +18,9 @@ const navEnd = source.indexOf(']', navStart)
 const navBlock = source.slice(navStart, navEnd)
 const navIds = [...navBlock.matchAll(/id: '([^']+)'/g)].map((match) => match[1])
 
-/** 每个分区应有的卡片数：关系近的卡片放进同一区，覆盖全部 14 张卡片。 */
+/** 每个分区应有的卡片数：关系近的卡片放进同一区，覆盖设置页全部 14 张卡片。
+ * 反思、内视、模块自检、探索学习统一在「进化」页的页签里，设置页不再单独建分区。
+ */
 const expectedCards = {
   'settings-connection': 3,
   'settings-update': 2,
@@ -49,6 +51,14 @@ function sectionBlocks(id) {
 test('设置目录按场景分为六个分区', () => {
   assert.equal(navIds.length, 6, '设置目录应有六个分区')
   assert.deepEqual(navIds, Object.keys(expectedCards))
+})
+
+test('自进化相关能力不再占设置分区，只留一个进「进化」页的入口', () => {
+  assert.ok(!source.includes('settings-reflect'), '设置页不应再有反思分区')
+  assert.ok(!source.includes('<reflect-panel'), '设置页不应再嵌反思面板')
+  const block = sectionBlocks('settings-security')
+  assert.ok(block.includes('@click="openEvolution"'), '功能分区缺少进「进化」页的入口')
+  assert.ok(source.includes("url: '/pages/evolution/index'"), '入口应跳到进化页')
 })
 
 test('设置目录每一项都能直接切换到对应分区', () => {
