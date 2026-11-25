@@ -1,6 +1,12 @@
 <template>
-  <view v-if="visible" class="app-sheet-mask" @click="onMaskClick">
-    <view class="app-sheet" :class="{ tall }" @click.stop>
+  <view
+    v-if="visible"
+    class="app-sheet-mask"
+    @touchstart="onMaskPress"
+    @mousedown="onMaskPress"
+    @click="onMaskClick"
+  >
+    <view class="app-sheet" :class="{ tall }" @touchstart.stop @mousedown.stop @click.stop>
       <view class="app-sheet-grip"></view>
       <view class="app-sheet-head">
         <view class="app-sheet-heading">
@@ -34,9 +40,37 @@ export default {
     maskClosable: { type: Boolean, default: true }
   },
   emits: ['close'],
+  data() {
+    return { openedAt: 0, maskPressedAt: 0 }
+  },
+  watch: {
+    visible: {
+      immediate: true,
+      handler(value) {
+        // 每次打开都重新计时：这次打开之前发生的手势一律不算。
+        if (value) this.openedAt = Date.now()
+        this.maskPressedAt = 0
+      }
+    }
+  },
   methods: {
+    // 手指（或鼠标）在遮罩上按下；只有真按过遮罩才算用户想关闭。
+    onMaskPress() {
+      this.maskPressedAt = Date.now()
+    },
+    /**
+     * 遮罩点击关闭。
+     *
+     * 必须自己按下过遮罩才关。手机浏览器 / WebView 在 touchend 之后才把合成
+     * click 定目标：手指在汇总条上抬起那一刻弹层已经渲染出来并盖满屏幕，于是
+     * 这次 click 落在遮罩上，弹层跟着一起关掉，表现成「点开闪一下就消失，再点
+     * 也一样」。所以只认真正按在遮罩上的手势。
+     */
     onMaskClick() {
       if (!this.maskClosable) return
+      const pressedAt = this.maskPressedAt
+      this.maskPressedAt = 0
+      if (!pressedAt || pressedAt < this.openedAt) return
       this.$emit('close')
     }
   }

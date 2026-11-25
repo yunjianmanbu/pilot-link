@@ -54,6 +54,10 @@ test('store 的七个反思通道分别走电脑端协议', () => {
     assert.ok(body.includes(`'${method}'`), `${fn} 没有调用 ${method}`)
     assert.ok(body.includes('isConnected()'), `${fn} 离线时没有先判断连接`)
   }
+  // 结论三态：手机端也能标记，走单独的一条通道。
+  const marking = storeBody('setReflectFindingStatus')
+  assert.ok(marking.includes("'reflect.finding'"), '三态标记没有调用 reflect.finding')
+  assert.ok(marking.includes('isConnected()'), '三态标记离线时没有先判断连接')
 })
 
 test('断言手机端不自行执行反思，只发请求', () => {
@@ -65,9 +69,40 @@ test('断言手机端不自行执行反思，只发请求', () => {
 
 test('问题域表与电脑端同序同 id', { skip: skipCross }, () => {
   const desktopIds = [...shared.matchAll(/id: '([a-z-]+)'/g)].map((match) => match[1])
-  const phoneIds = [...panel.matchAll(/\{ id: '([a-z-]+)', label:/g)].map((match) => match[1])
+  // 只取 REFLECT_TOPICS 这一块：文件里还有证据类别表与三态表，形状相同。
+  const block = panel.slice(
+    panel.indexOf('export const REFLECT_TOPICS = ['),
+    panel.indexOf('export const REFLECT_EVIDENCE_LABELS')
+  )
+  const phoneIds = [...block.matchAll(/\{ id: '([a-z-]+)', label:/g)].map((match) => match[1])
   assert.ok(desktopIds.length >= 8, '电脑端问题域少于预期')
-  assert.deepEqual(phoneIds, desktopIds, '手机端问题域顺序或 id 与电脑端不一致')
+  assert.deepEqual(phoneIds, desktopIds.slice(0, phoneIds.length), '手机端问题域顺序或 id 与电脑端不一致')
+  assert.equal(phoneIds.length, 8, '手机端问题域数量变了')
+})
+
+test('证据类别表与电脑端同序同 id', { skip: skipCross }, () => {
+  const desktopBlock = shared.slice(
+    shared.indexOf('REFLECTION_EVIDENCE_LABELS: Record<ReflectionEvidenceKind'),
+    shared.indexOf('export interface ReflectionTopic')
+  )
+  const desktopIds = [...desktopBlock.matchAll(/^\s{2}([a-z]+): \{ zh:/gm)].map((match) => match[1])
+  const phoneBlock = panel.slice(
+    panel.indexOf('export const REFLECT_EVIDENCE_LABELS = ['),
+    panel.indexOf('export const FINDING_STATUS_OPTIONS')
+  )
+  const phoneIds = [...phoneBlock.matchAll(/\{ id: '([a-z]+)', label:/g)].map((match) => match[1])
+  assert.ok(desktopIds.length >= 7, '电脑端证据类别少于预期')
+  assert.deepEqual(phoneIds, desktopIds, '手机端证据类别顺序或 id 与电脑端不一致')
+})
+
+test('结论三态与电脑端 ReflectionFindingStatus 一致', { skip: skipCross }, () => {
+  const desktop = shared.match(/export type ReflectionFindingStatus = (.+)/)?.[1] || ''
+  const desktopIds = [...desktop.matchAll(/'([a-z]+)'/g)].map((match) => match[1])
+  const phoneBlock = panel.slice(panel.indexOf('export const FINDING_STATUS_OPTIONS = ['))
+  const phoneIds = [...phoneBlock.slice(0, phoneBlock.indexOf(']')).matchAll(/\{ id: '([a-z]+)', label:/g)].map(
+    (match) => match[1]
+  )
+  assert.deepEqual(phoneIds, desktopIds, '手机端三态与电脑端不一致')
 })
 
 test('问题域、触发来源、严重度都有英文翻译', () => {
@@ -84,8 +119,36 @@ test('问题域、触发来源、严重度都有英文翻译', () => {
     '运行失败触发',
     '高',
     '中',
-    '低'
+    '低',
+    '待处理',
+    '已处理',
+    '不打算做',
+    '本轮未提问：{v1}',
+    '{v1}（缺{v2}）',
+    '运行记录（步数 / token / 失败）',
+    '阶段耗时与审批等待',
+    '用户评分或校验结果',
+    '上下文压缩痕迹',
+    '本地存储体积',
+    '自检代码事实',
+    '界面事实（组件规模 / 界面反馈）'
   ]) {
+    assert.ok(locale.includes(`"${label}":`), `英文词典缺少「${label}」`)
+  }
+})
+
+test('定时方式默认按版本，且下发的版本基线可直接阅读', { skip: skipCross }, () => {
+  // 共享层的粒度归一：认不出来的值（含旧默认）一律归到 version。
+  assert.ok(
+    /normalizeReflectionScheduleMode[\s\S]{0,200}?return 'version'/.test(shared),
+    '共享层默认不再是按版本',
+  )
+  for (const mode of ['version', 'interval', 'daily']) {
+    assert.ok(panel.includes(`chooseScheduleMode('${mode}')`), `手机端没有「${mode}」分段`)
+  }
+  // 版本模式的基线是「上一次反思时的应用版本」，由电脑端下发。
+  assert.ok(panel.includes('settings.lastVersion'), '版本基线没有读下发的 lastVersion')
+  for (const label of ['按版本', '版本基线', '上次反思 v{v1}', '还没有基线']) {
     assert.ok(locale.includes(`"${label}":`), `英文词典缺少「${label}」`)
   }
 })

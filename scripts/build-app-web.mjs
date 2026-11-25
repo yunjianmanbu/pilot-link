@@ -181,9 +181,15 @@ export function main(argv = process.argv.slice(2)) {
     ['publish', 'web', '--project', APP_DIR, '--webTitle', 'Pilot Link'],
     { cwd: APP_DIR, stdio: options.quiet ? 'pipe' : 'inherit', encoding: 'utf8' }
   )
-  if (build.status !== 0) {
+  if (build.error || build.status !== 0) {
     const detail = [build.stdout, build.stderr].filter(Boolean).join('\n').trim()
-    fail(`HBuilderX 构建失败（exit ${build.status ?? 'null'}）${detail ? `\n${detail}` : ''}`)
+    // 三种失败要能区分：命令根本没起来（--cli 指向目录 / 无执行权限）、被信号杀掉、正常返回非 0。
+    const reason = build.error
+      ? `无法启动 CLI：${build.error.message}`
+      : build.signal
+        ? `被信号 ${build.signal} 终止`
+        : `exit ${build.status ?? 'null'}`
+    fail(`HBuilderX 构建失败（${reason}）${detail ? `\n${detail}` : ''}`)
   }
   if (!existsSync(join(webDir, 'index.html'))) {
     fail(`构建结束但没找到 ${join(webDir, 'index.html')}`)

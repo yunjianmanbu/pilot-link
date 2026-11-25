@@ -80,7 +80,14 @@
             <view class="reflect-segment">
               <view
                 class="reflect-segment-item"
-                :class="{ active: settings.scheduleMode !== 'daily' }"
+                :class="{ active: settings.scheduleMode === 'version' }"
+                @click="chooseScheduleMode('version')"
+              >
+                <text class="reflect-segment-text">{{ t('按版本') }}</text>
+              </view>
+              <view
+                class="reflect-segment-item"
+                :class="{ active: settings.scheduleMode === 'interval' }"
                 @click="chooseScheduleMode('interval')"
               >
                 <text class="reflect-segment-text">{{ t('按间隔') }}</text>
@@ -93,11 +100,21 @@
                 <text class="reflect-segment-text">{{ t('每天固定时间') }}</text>
               </view>
             </view>
-            <view class="reflect-row" @click="openSchedulePicker">
+            <view
+              v-if="settings.scheduleMode === 'version'"
+              class="reflect-row"
+            >
+              <text class="reflect-row-title">{{ scheduleLabel }}</text>
+              <text class="reflect-row-value">{{ scheduleValue }}</text>
+            </view>
+            <view v-else class="reflect-row" @click="openSchedulePicker">
               <text class="reflect-row-title">{{ scheduleLabel }}</text>
               <text class="reflect-row-value">{{ scheduleValue }}</text>
               <text class="reflect-row-caret">›</text>
             </view>
+            <text v-if="settings.scheduleMode === 'version'" class="reflect-hint">
+              {{ t('升级到新版本后自动反思一次；版本长期不变时每 7 天兜底一次。') }}
+            </text>
           </template>
         </view>
 
@@ -372,18 +389,42 @@
           <text class="reflect-report-time">{{ timeText(detailReport.createdAt) }}</text>
         </view>
         <text class="reflect-detail-summary">{{ detailReport.summary || t('（无摘要）') }}</text>
+        <!-- 证据不足而没问的域：不写出来，用户只会看到「只问了 2 个域」而不知道为何。 -->
+        <text v-if="skippedText" class="reflect-detail-skipped">{{ skippedText }}</text>
         <text class="reflect-detail-meta">
           {{ t('模型：{v1} · 用时 {v2} 秒', { v1: detailReport.model || t('未记录'), v2: secondsText(detailReport.durationMs) }) }}
         </text>
-        <view v-for="(finding, index) in detailReport.findings" :key="index" class="reflect-finding">
+        <view v-for="(finding, index) in detailReport.findings" :key="finding.id || index" class="reflect-finding">
           <view class="reflect-finding-head">
             <text class="reflect-sev" :class="finding.severity">{{ severityLabel(finding.severity) }}</text>
             <text class="reflect-finding-topic">{{ topicLabel(finding.topic) }}</text>
+            <text v-if="findingStatusLabel(finding)" class="reflect-finding-status" :class="finding.status || 'open'">
+              {{ findingStatusLabel(finding) }}
+            </text>
           </view>
           <text class="reflect-finding-observation">{{ finding.observation }}</text>
           <text class="reflect-finding-suggestion">
             {{ t('建议：{v1}', { v1: finding.suggestion }) }}
           </text>
+          <!-- 代码位置：结论指向哪个文件哪一行，手机上也要能核对。 -->
+          <text
+            v-for="(ref, refIndex) in finding.refs || []"
+            :key="`${finding.id || index}-ref-${refIndex}`"
+            class="reflect-finding-ref"
+          >
+            {{ refLabel(ref) }}
+          </text>
+          <view class="reflect-finding-actions">
+            <text
+              v-for="option in FINDING_STATUS_OPTIONS"
+              :key="option.id"
+              class="reflect-status-btn"
+              :class="{ active: (finding.status || 'open') === option.id }"
+              @click="markFinding(finding, option.id)"
+            >
+              {{ option.label() }}
+            </text>
+          </view>
         </view>
         <text v-if="detailReport.evidence" class="reflect-evidence">{{ detailReport.evidence }}</text>
         <view class="reflect-detail-tail"></view>
@@ -408,6 +449,7 @@ import {
   runReflectNow,
   saveReflectSettings,
   sendReflectTestMail,
+  setReflectFindingStatus,
   store
 } from '../../store/index.js'
 
@@ -437,6 +479,27 @@ const TRIGGER_LABELS = {
 }
 
 const SEVERITY_LABELS = { high: () => t('高'), medium: () => t('中'), low: () => t('低') }
+
+/**
+ * 类别与电脑端 REFLECTION_EVIDENCE_LABELS 同序同名：
+ * 报告里「跳过某个域」要说明缺的是哪类证据。
+ */
+export const REFLECT_EVIDENCE_LABELS = [
+  { id: 'runs', label: () => t('运行记录（步数 / token / 失败）') },
+  { id: 'timing', label: () => t('阶段耗时与审批等待') },
+  { id: 'outcomes', label: () => t('用户评分或校验结果') },
+  { id: 'compaction', label: () => t('上下文压缩痕迹') },
+  { id: 'storage', label: () => t('本地存储体积') },
+  { id: 'code', label: () => t('自检代码事实') },
+  { id: 'ui', label: () => t('界面事实（组件规模 / 界面反馈）') }
+]
+
+/** 结论三态，与电脑端 `ReflectionFindingStatus` 一致；open 是默认值。 */
+export const FINDING_STATUS_OPTIONS = [
+  { id: 'open', label: () => t('待处理') },
+  { id: 'done', label: () => t('已处理') },
+  { id: 'dismissed', label: () => t('不打算做') }
+]
 
 /** 与电脑端 REFLECTION_INTERVAL_MIN/MAX 对齐：30 分钟到 7 天。 */
 export const REFLECT_INTERVALS = [
@@ -636,7 +699,9 @@ export default {
       intervalPickerVisible: false,
       mailPresetPickerVisible: false,
       timeSheetVisible: false,
-      detailReport: null
+      detailReport: null,
+      // 三态标记正在提交：避免连点把同一个请求排队。
+      statusSaving: false
     }
   },
   computed: {
@@ -748,10 +813,16 @@ export default {
       return this.settings?.dailyTime || '09:00'
     },
     scheduleLabel() {
+      if (this.settings?.scheduleMode === 'version') return t('版本基线')
       return this.settings?.scheduleMode === 'daily' ? t('每天时间') : t('间隔')
     },
     scheduleValue() {
       if (!this.settings) return ''
+      if (this.settings.scheduleMode === 'version') {
+        return this.settings.lastVersion
+          ? t('上次反思 v{v1}', { v1: this.settings.lastVersion })
+          : t('还没有基线')
+      }
       if (this.settings.scheduleMode === 'daily') return this.dailyTime
       const minutes = Number(this.settings.intervalMinutes) || 720
       const hit = REFLECT_INTERVALS.find((choice) => choice.minutes === minutes)
@@ -887,6 +958,7 @@ export default {
       void this.patch({ topics: next })
     },
     openSchedulePicker() {
+      if (this.settings?.scheduleMode === 'version') return
       if (this.settings?.scheduleMode === 'daily') {
         this.timeSheetVisible = true
         return
@@ -921,8 +993,10 @@ export default {
         return
       }
       const patch = {
-        emailTo,
-        smtpHost: String(this.mail.smtpHost || '').trim(),
+        // 空输入框 = 用户要清掉这一项：发 null。空串在主进程里是「保持原值」，
+        // 传过去会让这次清空静默失效。
+        emailTo: emailTo || null,
+        smtpHost: String(this.mail.smtpHost || '').trim() || null,
         smtpPort: port,
         smtpSecurity: this.mail.smtpSecurity
       }
@@ -987,6 +1061,53 @@ export default {
     topicLabel(id) {
       const hit = REFLECT_TOPICS.find((topic) => topic.id === id)
       return hit ? hit.label() : id
+    },
+    /** 本轮因证据不足没问的域，一条说明拼好；没跳过时返回空串。 */
+    skippedText() {
+      const skipped = this.detailReport?.skipped
+      if (!Array.isArray(skipped) || skipped.length === 0) return ''
+      const parts = skipped.map((entry) => {
+        const missing = (entry.missing || [])
+          .map((kind) => {
+            const hit = REFLECT_EVIDENCE_LABELS.find((item) => item.id === kind)
+            return hit ? hit.label() : kind
+          })
+          .join('、')
+        return missing
+          ? t('{v1}（缺{v2}）', { v1: this.topicLabel(entry.topic), v2: missing })
+          : this.topicLabel(entry.topic)
+      })
+      return t('本轮未提问：{v1}', { v1: parts.join('；') })
+    },
+    /**「路径:行」：电脑端下发的是结构化 ref（path / line），手机上拼成一行更好认。 */
+    refLabel(ref) {
+      if (!ref) return ''
+      const path = String(ref.path || '').trim()
+      const line = Number(ref.line)
+      if (!path) return ''
+      return Number.isFinite(line) && line > 0 ? `${path}:${line}` : path
+    },
+    findingStatusLabel(finding) {
+      const status = finding?.status || 'open'
+      // 默认的「待处理」不占位：只有真的标过才显示状态，避免每条结论都多一行。
+      if (status === 'open') return ''
+      const hit = FINDING_STATUS_OPTIONS.find((option) => option.id === status)
+      return hit ? hit.label() : ''
+    },
+    async markFinding(finding, status) {
+      if (!finding?.id) return
+      const current = finding.status || 'open'
+      if (current === status) return
+      if (this.statusSaving) return
+      this.statusSaving = true
+      try {
+        const report = await setReflectFindingStatus(this.detailReport.id, finding.id, status)
+        if (report) this.detailReport = report
+      } catch (error) {
+        this.toast(error?.message || t('保存失败'))
+      } finally {
+        this.statusSaving = false
+      }
     },
     secondsText(durationMs) {
       const ms = Number(durationMs) || 0
@@ -1515,6 +1636,17 @@ export default {
   color: var(--muted);
   font-size: calc(21rpx * var(--font-scale));
 }
+/* 未提问的域：解释为什么某个问题域没结果，不占醒目层级。 */
+.reflect-detail-skipped {
+  display: block;
+  margin-top: 10rpx;
+  padding: 12rpx 14rpx;
+  border-radius: 12rpx;
+  background: var(--input-bg);
+  color: var(--muted);
+  font-size: calc(21rpx * var(--font-scale));
+  line-height: 1.5;
+}
 .reflect-finding {
   margin-top: 18rpx;
   padding: 18rpx 20rpx;
@@ -1525,6 +1657,48 @@ export default {
   display: flex;
   align-items: center;
   gap: 12rpx;
+}
+/* 只标过的结论才显状态；待处理不占位。 */
+.reflect-finding-status {
+  margin-left: auto;
+  padding: 2rpx 10rpx;
+  border-radius: 999rpx;
+  font-size: calc(19rpx * var(--font-scale));
+  border: 1rpx solid var(--line);
+  color: var(--muted);
+}
+.reflect-finding-status.done {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.reflect-finding-status.dismissed {
+  color: var(--dim);
+}
+/* 代码位置：等宽字体并允许换行，长路径不被截断。 */
+.reflect-finding-ref {
+  display: block;
+  margin-top: 6rpx;
+  color: var(--muted);
+  font-family: monospace;
+  font-size: calc(20rpx * var(--font-scale));
+  line-height: 1.45;
+  word-break: break-all;
+}
+.reflect-finding-actions {
+  display: flex;
+  gap: 10rpx;
+  margin-top: 12rpx;
+}
+.reflect-status-btn {
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid var(--line);
+  color: var(--dim);
+  font-size: calc(20rpx * var(--font-scale));
+}
+.reflect-status-btn.active {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 .reflect-finding-topic {
   color: var(--text-strong);

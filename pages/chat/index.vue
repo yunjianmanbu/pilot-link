@@ -292,7 +292,8 @@
           </view>
           <view class="stream-status">
             <view class="typing"><text></text><text></text><text></text></view>
-            <text>{{ t('执行中…') }}</text>
+            <text>{{ streamStatusLabel }}</text>
+            <text v-if="runElapsed" class="stream-status-elapsed">{{ runElapsed }}</text>
           </view>
         </view>
       </view>
@@ -493,6 +494,13 @@
             <view v-else class="schedule-input schedule-time" @click="openScheduleTime">
               {{ t('每天{v1}', { v1: scheduleTime }) }}
             </view>
+          </view>
+          <view v-if="scheduleKind === 'daily'" class="schedule-form-row">
+            <input
+              v-model="scheduleStartDate"
+              class="schedule-input"
+              :placeholder="t('起始日期（可选）2026-11-25')"
+            />
           </view>
           <view class="todo-actions">
             <text
@@ -1072,6 +1080,7 @@ import { extractLinks, linkLabel, linkifySegments } from '../../lib/media.js'
 import { modelOptionLabel } from '../../lib/model-label.js'
 import { planRows } from '../../lib/plan.js'
 import { createPressGesture } from '../../lib/press.js'
+import { runProgressParts } from '../../lib/run-progress.js'
 import { clearDraft, loadDraft, saveDraft } from '../../lib/storage.js'
 import {
   addMemory,
@@ -1343,6 +1352,8 @@ export default {
       scheduleTime: '09:00',
       scheduleTimeOpen: false,
       scheduleToDelete: null,
+      // 起始日期：只在「每天」下有值，空串表示不设，到点即触发。
+      scheduleStartDate: '',
       // 任务改名弹层：预填当前标题，空名称和保存中都不允许提交。
       renameOpen: false,
       renameValue: '',
@@ -1388,7 +1399,11 @@ export default {
       memoryBusy: false,
       memoryTarget: null,
       // 新会话欢迎页的快捷指令；电脑端未自定义时使用内置预设。
-      quickPrompts: []
+      quickPrompts: [],
+      // 等待行里的已运行时长：每秒自增触发重算，没有在跑的任务时不走定时器。
+      // 秒表句柄（不参与渲染，放 data 只为了能在各生命周期里统一清理）。
+      runTicker: null,
+      nowTick: 0
     }
   },
   created() {
@@ -1534,6 +1549,24 @@ export default {
       // 只要本会话有运行中的任务就显示「执行中…」：从列表直接进入正在运行的
       // 会话时没有收到 chat.started，streamRunId 为空，但任务仍在执行。
       return Boolean(store.streamText) || Boolean(runForSession(store.currentSessionId))
+    },
+    // 当前会话的运行记录：步号与已运行时长都从它读。
+    currentRun() {
+      return runForSession(store.currentSessionId)
+    },
+    /**
+     * 等待行的第一段：第 1 步仍然说「执行中…」，与电脑端 ThinkingIndicator 同口径。
+     */
+    streamStatusLabel() {
+      const parts = runProgressParts(this.currentRun)
+      if (parts.step > 1) return t('正在执行第 {v1} 步', { v1: parts.step })
+      return t('执行中…')
+    },
+    // 不足 3 秒的秒数只会闪一下，纯函数返回空串，模板据此不渲染这一段。
+    // nowTick 必须在这里被读到，否则定时器改了它 computed 也不会重算。
+    runElapsed() {
+      this.nowTick
+      return runProgressParts(this.currentRun, Date.now()).elapsed
     },
     streamNodes() {
       return renderMarkdown(store.streamText || '', { theme: this.markdownTheme })
@@ -1808,6 +1841,10 @@ export default {
     draft(value) {
       this.queueDraftSave(value)
     },
+    running(on) {
+      if (on) this.startRunTicker()
+      else this.stopRunTicker()
+    },
     references() {
       // 参照条目也是输入的一部分，和草稿一起保存。
       this.queueDraftSave(this.draft)
@@ -1850,6 +1887,8 @@ export default {
     init()
     applySystemBars()
     this.bindKeyboardBars()
+    // 从后台回来时可能仍在跑：补起秒表（running 侦听只在变化时触发）。
+    if (this.running) this.startRunTicker()
     if (!store.pairing) {
       uni.reLaunch({ url: '/pages/pair/index' })
       return
@@ -1872,8 +1911,11 @@ export default {
   onHide() {
     // 切后台时也可能被系统回收，先把还没落盘的草稿写掉。
     this.flushDraft()
+    // 后台不累计界面秒数：回来时 onShow 会重新起表并按 startedAt 重算。
+    this.stopRunTicker()
   },
   onUnload() {
+    this.stopRunTicker()
     this.flushDraft()
     this.messagePress?.dispose()
     if (
@@ -1885,6 +1927,24 @@ export default {
     }
   },
   methods: {
+    /**
+     * 运行秒表：只为了让「已运行 1m 35s」每秒重算。
+     * 没在运行时不起定时器，避免会话页常驻一个每秒唤醒的计时器。
+     */
+    startRunTicker() {
+      if (this.runTicker) return
+      this.nowTick = Date.now()
+      this.runTicker = setInterval(() => {
+        this.nowTick = Date.now()
+        // 运行已经结束（收尾事件到了但 watch 还没触发）时顺手收掉。
+        if (!this.running) this.stopRunTicker()
+      }, 1000)
+    },
+    stopRunTicker() {
+      if (!this.runTicker) return
+      clearInterval(this.runTicker)
+      this.runTicker = null
+    },
     /** 键盘弹出后部分 ROM 会把状态栏图标恢复成白色，再对齐一次主题。 */
     bindKeyboardBars() {
       if (this.keyboardBarsHandler) return
@@ -2071,6 +2131,7 @@ export default {
       this.scheduleDelay = '10'
       this.scheduleInterval = '60'
       this.scheduleTime = '09:00'
+      this.scheduleStartDate = ''
       this.scheduleFormOpen = true
       this.scheduledOpen = true
       void loadScheduled(store.currentSessionId)
@@ -2086,6 +2147,7 @@ export default {
       this.scheduleDelay = '10'
       this.scheduleInterval = task.intervalMinutes ? String(task.intervalMinutes) : '60'
       this.scheduleTime = task.timeOfDay || '09:00'
+      this.scheduleStartDate = task.startDate || ''
     },
     cancelScheduleForm() {
       this.scheduleFormOpen = false
@@ -2112,12 +2174,19 @@ export default {
         uni.showToast({ title: t("间隔需要在 1 到 10080 分钟之间"), icon: 'none' })
         return null
       }
+      const startDate = this.scheduleKind === 'daily' ? String(this.scheduleStartDate || '').trim() : ''
+      if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+        uni.showToast({ title: t("起始日期要像 2026-11-25"), icon: 'none' })
+        return null
+      }
       return {
         content,
         kind: this.scheduleKind,
         ...(this.scheduleKind === 'once' ? { delayMinutes: delay } : {}),
         ...(this.scheduleKind === 'interval' ? { intervalMinutes: interval } : {}),
-        ...(this.scheduleKind === 'daily' ? { timeOfDay: this.scheduleTime } : {})
+        ...(this.scheduleKind === 'daily'
+          ? { timeOfDay: this.scheduleTime, ...(startDate ? { startDate } : {}) }
+          : {})
       }
     },
     async saveSchedule() {
@@ -2162,6 +2231,7 @@ export default {
       this.scheduleDelay = '10'
       this.scheduleInterval = '60'
       this.scheduleTime = '09:00'
+      this.scheduleStartDate = ''
       this.scheduleFormOpen = true
       this.scheduledOpen = true
     },
@@ -2173,7 +2243,12 @@ export default {
     },
     scheduleLabel(task) {
       if (task.kind === 'interval') return t("每 {v1} 分钟", { v1: task.intervalMinutes || 60 })
-      if (task.kind === 'daily') return t("每天 {v1}", { v1: task.timeOfDay || '09:00' })
+      if (task.kind === 'daily') {
+        const time = task.timeOfDay || '09:00'
+        return task.startDate
+          ? t("{v1}（从 {v2} 起）", { v1: time, v2: task.startDate })
+          : t("每天 {v1}", { v1: time })
+      }
       return t("一次性")
     },
     scheduleTimeText(iso) {
@@ -3551,6 +3626,11 @@ export default {
   color: var(--dim);
   font-size: calc(23rpx * var(--font-scale));
   padding: 6rpx 4rpx;
+}
+/* 已运行时长用等宽数字，秒数跳动时行宽不抖。 */
+.stream-status-elapsed {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 .typing {
   display: flex;

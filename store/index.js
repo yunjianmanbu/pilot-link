@@ -192,6 +192,9 @@ export const store = reactive({
   scheduledSessionId: '',
   scheduledLoading: false,
   scheduledBusy: false,
+  // 首页「全部定时任务」的跨会话分组，只读缓存：打开首页时静默拉一次。
+  scheduledAllGroups: [],
+  scheduledAllAt: '',
   // 会话列表的待办数量：sessionId -> 未发送条数。
   todoCounts: {},
   permissions: [],
@@ -1075,6 +1078,19 @@ function onRunStarted(event) {
   void refreshSessions(true)
 }
 
+/**
+ * 记下当前步号。
+ *
+ * run 记录先由 trackRun 建立（run.started 通常先到）；事件乱序时也能补建一条，
+ * 否则「第 N 步」会因为缺 run 而整段丢失。
+ */
+function onStepStarted(event) {
+  const run = trackRun(event)
+  if (!run) return
+  const step = Number(event.step)
+  if (Number.isFinite(step) && step > 0) run.step = Math.floor(step)
+}
+
 function onRunDelta(event, reasoning = false) {
   if (!event || typeof event.text !== 'string' || !event.text) return
   const runId = typeof event.runId === 'string' ? event.runId : ''
@@ -1224,6 +1240,11 @@ export function onEvent(event) {
     case 'run.started':
       onRunStarted(event)
       break
+    // 步号：电脑端每进入新一轮工具循环就报一次。手机端只用来在等待行显示
+    // 「第 N 步」，所以记在 run 上，不单独进消息流。
+    case 'step.started':
+      onStepStarted(event)
+      break
     case 'message.delta':
       onRunDelta(event, false)
       break
@@ -1267,6 +1288,8 @@ export function onEvent(event) {
       break
     case 'scheduled.changed':
       if (event.sessionId) void loadScheduled(event.sessionId)
+      // 首页的「全部定时」汇总条与弹层用的是跨会话缓存，改完要跟着更新。
+      void loadAllScheduled()
       break
     case 'update.changed': {
       const state = normalizeDesktopUpdate(event.state)
@@ -1645,6 +1668,30 @@ export function closeReflectReport() {
   store.reflectReport = null
 }
 
+/**
+ * 标记一条结论的处理状态：`open` / `done`（已处理）/ `dismissed`（不打算做）。
+ *
+ * 电脑端已有同一份状态字段，手机端以前只能看不能改；现在在详情页就地标记，
+ * 两次读写存的是同一条记录，因此以服务端回包为准重写详情。
+ */
+export async function setReflectFindingStatus(reportId, findingId, status) {
+  const id = String(reportId || '')
+  const finding = String(findingId || '')
+  if (!id || !finding) throw new Error(t('缺少结论标识'))
+  if (!client?.isConnected()) throw new Error(t('尚未连接电脑'))
+  const data = await request(
+    'reflect.finding',
+    { reportId: id, findingId: finding, status },
+    REFLECT_TIMEOUT
+  )
+  const report = data?.report || null
+  // 只有正在看的那一份被改时才覆盖详情，避免把别的报告显示到当前弹层里。
+  if (report && (store.reflectReport?.id === report.id || !store.reflectReport)) {
+    store.reflectReport = report
+  }
+  return report
+}
+
 export async function refreshSessions(force = false) {
   if (!client?.isConnected() || store.loadingSessions) return false
   if (!force && store.sessions.length > 0) return true
@@ -1778,7 +1825,9 @@ export function refreshAll() {
       refreshAgentInfo(),
       refreshSessions(true),
       refreshQueue(),
-      refreshPermissions()
+      refreshPermissions(),
+      // 首页「全部定时任务」的汇总条：顺手取一次跨会话清单，失败不影响其它对账。
+      loadAllScheduled()
     ])
     await loadTodos()
   })().finally(() => {
@@ -2569,6 +2618,8 @@ function resetSessionState() {
   store.scheduledSessionId = ''
   store.scheduledLoading = false
   store.scheduledBusy = false
+  store.scheduledAllGroups = []
+  store.scheduledAllAt = ''
   store.todoCounts = {}
   store.evolution = null
   store.evolutionLoading = false
@@ -3929,6 +3980,94 @@ export async function loadScheduled(sessionId = store.currentSessionId) {
   }
 }
 
+let scheduledAllToken = 0
+
+/**
+ * 被后发的一次读取抢占时返回它。
+ *
+ * token 只是「最后一次读取算数」，但调用方（首页弹层）拿到空数组分不清
+ * 「真的没有任务」和「这次读取作废了」，会把已有列表错清成空。groups 为 null
+ * 就是告诉调用方：保留你手上的那份。
+ */
+const SCHEDULED_ALL_STALE = Object.freeze({ groups: null, offline: false, stale: true })
+
+/**
+ * 首页「全部定时任务」：跨会话读取。
+ *
+ * 新版电脑端有 `schedules.listAll`，一次拿回全部分组；更早的电脑端会回
+ * 「手机端不支持该操作」，这时退化成逐会话 `schedules.list`，不让人看到空弹层。
+ * 返回值：{ groups, offline, stale }——offline 为真时页面提示「电脑端离线」，
+ * stale 为真时 groups 为 null，调用方不要覆盖已有列表。
+ */
+export async function loadAllScheduled() {
+  const token = ++scheduledAllToken
+  if (!scheduledOnline()) {
+    // 离线：把上一次读到的分组原样带回去，页面据此说「离线」，而不是「没有任务」。
+    return { groups: store.scheduledAllGroups.slice(), offline: true, stale: false }
+  }
+  let groups = null
+  try {
+    const data = await request('schedules.listAll')
+    if (token !== scheduledAllToken) return SCHEDULED_ALL_STALE
+    groups = Array.isArray(data?.groups) ? data.groups : []
+  } catch {
+    if (token !== scheduledAllToken) return SCHEDULED_ALL_STALE
+  }
+  if (groups) {
+    store.scheduledAllGroups = groups
+    store.scheduledAllAt = new Date().toISOString()
+    return { groups, offline: false, stale: false }
+  }
+
+  // 旧版电脑端没有 listAll：逐会话补齐，单个会话失败不影响其它会话。
+  const ids = store.sessions.map((session) => session?.id).filter(Boolean)
+  const results = await Promise.allSettled(
+    ids.map((sessionId) => request('schedules.list', { sessionId }))
+  )
+  if (token !== scheduledAllToken) return SCHEDULED_ALL_STALE
+  const fallback = []
+  results.forEach((result, index) => {
+    if (result.status !== 'fulfilled') return
+    const tasks = Array.isArray(result.value?.tasks) ? result.value.tasks : []
+    if (!tasks.length) return
+    const session = store.sessions.find((item) => item.id === ids[index])
+    fallback.push({
+      sessionId: ids[index],
+      sessionTitle: session?.title || '',
+      workspacePath: session?.cwd || session?.workspacePath || '',
+      missing: false,
+      tasks
+    })
+  })
+  // 一个会话都没读到（手机上的列表还没拉到）时不能把缓存清空，
+  // 否则首页汇总条会因为一次没拿到数据的刷新整条消失。
+  if (!ids.length && store.scheduledAllGroups.length) {
+    return { groups: store.scheduledAllGroups.slice(), offline: false, stale: false }
+  }
+  // 有会话没读成功时这份结果是不全的：别拿它覆盖缓存，否则首页汇总条会
+  // 因为一次网络抖动整条消失（用户看到的就是「闪一下就没了」）。
+  const complete = results.every((result) => result.status === 'fulfilled')
+  if (!complete && store.scheduledAllGroups.length) {
+    return { groups: store.scheduledAllGroups.slice(), offline: false, stale: false }
+  }
+  store.scheduledAllGroups = fallback
+  store.scheduledAllAt = new Date().toISOString()
+  return { groups: fallback, offline: false, stale: false }
+}
+
+/** 首页汇总条的数量：启用中的任务数与会话数，口径与弹层一致。 */
+export function scheduledOverviewCounts() {
+  let tasks = 0
+  let sessions = 0
+  for (const group of store.scheduledAllGroups || []) {
+    const list = Array.isArray(group?.tasks) ? group.tasks : []
+    if (!list.length) continue
+    sessions += 1
+    tasks += list.filter((task) => task?.enabled !== false).length
+  }
+  return { tasks, sessions }
+}
+
 function requireScheduledSession() {
   const sessionId = store.currentSessionId
   if (!sessionId || store.scheduledBusy) return ''
@@ -4527,6 +4666,9 @@ export function startNewChat(cwd, prompt = '') {
   store.scheduled = []
   store.scheduledSessionId = ''
   store.scheduledLoading = false
+  scheduledAllToken += 1
+  store.scheduledAllGroups = []
+  store.scheduledAllAt = ''
   // 源码改造等入口可以预填第一句，用户仍可改完再发。
   store.newChat = { cwd: cwd || '', title: t("新对话"), prompt: String(prompt || '') }
 }

@@ -12,8 +12,8 @@
           <text v-if="store.pairings.length > 0" class="device-caret">▾</text>
         </view>
         <view class="topbar-actions">
-          <text class="action" @click="openEvolution">{{ t('进化') }}</text>
-          <text class="action" @click="refresh">{{ t('刷新') }}</text>
+          <!-- 深浅模式最常用，放到首页顶栏；「跟随系统」三态仍在设置的「外观」里。 -->
+          <text class="action" @click="toggleTheme">{{ themeToggleLabel }}</text>
           <text class="action" @click="openSettings">{{ t('设置') }}</text>
         </view>
       </view>
@@ -54,6 +54,20 @@
         <view class="unread-summary-dot queue-summary-dot"></view>
         <text class="queue-summary-count">{{ t('{v1} 个任务排队中', { v1: totalQueueCount }) }}</text>
         <text class="queue-summary-action">{{ t('查看') }} ›</text>
+      </view>
+
+      <!-- 定时任务汇总：会话行里看不出排了几条定时，这里给一个跨会话的入口。
+           桌面端配了定时任务才有这一条，没有就整行不占位置。 -->
+      <view
+        v-if="scheduledSummary.tasks > 0"
+        class="queue-summary sched-summary"
+        @click="openScheduleSheet"
+      >
+        <view class="unread-summary-dot queue-summary-dot sched-summary-dot"></view>
+        <text class="queue-summary-count sched-summary-count">
+          {{ t('{v1} 个定时任务', { v1: scheduledSummary.tasks }) }}
+        </text>
+        <text class="queue-summary-action sched-summary-action">{{ t('查看') }} ›</text>
       </view>
 
       <view v-if="store.sessions.length > 0" class="filter-bar">
@@ -343,6 +357,64 @@
       </scroll-view>
     </app-sheet>
 
+    <!-- 全部定时任务：跨会话看排了哪些定时，点任务行进入对应会话继续处理。 -->
+    <app-sheet
+      :visible="scheduleSheetVisible"
+      :title="t('全部定时任务')"
+      :subtitle="scheduleSheetSubtitle"
+      @close="closeScheduleSheet"
+    >
+      <scroll-view
+        scroll-y
+        class="todo-sheet-list"
+        :style="{ height: scheduleSheetHeight }"
+        :show-scrollbar="false"
+      >
+        <view v-if="scheduleSheetLoading" class="todo-sheet-empty">
+          {{ t('正在读取定时任务…') }}
+        </view>
+        <view v-else-if="scheduleSheetOffline && !scheduleGroups.length" class="todo-sheet-empty">
+          {{ t('电脑端离线，暂时读不到定时任务') }}
+        </view>
+        <view v-else-if="!scheduleGroups.length" class="todo-sheet-empty">
+          {{ t('还没有定时任务') }}
+        </view>
+        <view
+          v-for="group in scheduleGroups"
+          :key="group.sessionId"
+          class="todo-sheet-group"
+        >
+          <view class="todo-sheet-head" @click="openScheduleSession(group)">
+            <text class="todo-sheet-session">{{ group.title }}</text>
+            <text class="todo-sheet-project">{{ group.project }}</text>
+            <text class="todo-sheet-count">{{ group.tasks.length }}</text>
+            <text v-if="!group.missing" class="todo-sheet-go">›</text>
+          </view>
+          <view
+            v-for="task in group.tasks"
+            :key="task.id"
+            class="todo-sheet-item sched-item"
+            @click="openScheduleSession(group)"
+          >
+            <view class="todo-sheet-dot sched-dot" :class="{ off: task.enabled === false }"></view>
+            <view class="sched-body">
+              <text class="todo-sheet-text">{{ task.content }}</text>
+              <view class="sched-meta">
+                <text class="sched-kind">{{ scheduleKindLabel(task) }}</text>
+                <text v-if="task.enabled === false" class="sched-tag">{{ t('已暂停') }}</text>
+                <text v-else-if="task.lastStatus === 'failed'" class="sched-tag error">
+                  {{ t('上次执行失败') }}
+                </text>
+                <text v-else class="sched-tag">
+                  {{ t('下次 {v1}', { v1: scheduleTimeText(task.nextRunAt) }) }}
+                </text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+    </app-sheet>
+
     <!-- 工作区：既可以选授权目录里任意层级的已有文件夹，也可以新建子文件夹。 -->
     <app-sheet
       :visible="creatorVisible"
@@ -559,6 +631,12 @@ import AppDialogHost from '../../components/app-dialog-host/app-dialog-host.vue'
 import AppSheet from '../../components/app-sheet/app-sheet.vue'
 import { projectName, relativeTime } from '../../lib/format.js'
 import { planProgress } from '../../lib/plan.js'
+import {
+  buildScheduledGroups,
+  mergeScheduledResult,
+  scheduleKindLabel,
+  scheduleTimeText
+} from '../../lib/scheduled-overview.js'
 import { createPressGesture } from '../../lib/press.js'
 import { validateWorkspaceName } from '../../lib/workspace-name.js'
 import {
@@ -575,6 +653,7 @@ import {
   deleteSession,
   forkSession,
   init,
+  loadAllScheduled,
   loadPendingTodosBySession,
   onAppShow,
   openWorkspaceFolder,
@@ -584,6 +663,7 @@ import {
   refreshSessions,
   renameSession,
   selectSession,
+  setThemeMode,
   startNewChat,
   store,
   switchToDevice
@@ -619,6 +699,11 @@ export default {
       todoSheetLoading: false,
       todoSheetRows: [],
       todoSheetSeq: 0,
+      scheduleSheetVisible: false,
+      scheduleSheetLoading: false,
+      scheduleSheetRows: [],
+      scheduleSheetOffline: false,
+      scheduleSheetSeq: 0,
       updateState: getUpdateDownloadState(),
       updateUnsubscribe: null,
       checkingUpdate: false,
@@ -651,6 +736,11 @@ export default {
     },
     refresherBackground() {
       return store.theme === 'light' ? '#ffffff' : '#000000'
+    },
+    themeToggleLabel() {
+      // 显示的是「当前」模式：点一下切到另一套。跟随系统时按解析后的配色显示，
+      // 避免出现「没选过浅色却写着浅色」的错觉。
+      return store.theme === 'light' ? `☀ ${t('浅色')}` : `☾ ${t('深色')}`
     },
     versionLabel() {
       // 热更后 currentAppInfo() 会读到已应用的 wgt 版本；H5 预览没有原生版本号。
@@ -923,6 +1013,35 @@ export default {
       for (const group of this.todoSheetGroups) rows += group.items.length + 1
       return `${Math.min(Math.max(rows, 2), 7) * 96}rpx`
     },
+    /** 首页定时汇总条的数量：只算启用中的任务，口径与弹层一致。 */
+    scheduledSummary() {
+      let tasks = 0
+      let sessions = 0
+      for (const group of store.scheduledAllGroups || []) {
+        const list = Array.isArray(group?.tasks) ? group.tasks : []
+        if (!list.length) continue
+        sessions += 1
+        tasks += list.filter((task) => task?.enabled !== false).length
+      }
+      return { tasks, sessions }
+    },
+    scheduleGroups() {
+      return buildScheduledGroups(this.scheduleSheetRows, store.sessions).map((group) => ({
+        ...group,
+        // 会话已被删掉时，标题说清楚为什么点不进去。
+        title: group.missing ? t('会话已删除') : group.title
+      }))
+    },
+    scheduleSheetSubtitle() {
+      if (this.scheduleSheetLoading) return t('正在读取定时任务…')
+      const total = this.scheduleGroups.reduce((sum, group) => sum + group.tasks.length, 0)
+      return t('{v1} 个定时任务', { v1: total })
+    },
+    scheduleSheetHeight() {
+      let rows = 0
+      for (const group of this.scheduleGroups) rows += group.tasks.length + 1
+      return `${Math.min(Math.max(rows, 2), 8) * 96}rpx`
+    },
     currentFilter() {
       if (!this.projectFilter) {
         return { name: t("全部项目"), count: store.sessions.length }
@@ -1020,6 +1139,14 @@ export default {
       this.filterMenuVisible = false
       return true
     }
+    if (this.todoSheetVisible) {
+      this.closeTodoSheet()
+      return true
+    }
+    if (this.scheduleSheetVisible) {
+      this.closeScheduleSheet()
+      return true
+    }
     if (this.deviceSheetVisible) {
       this.deviceSheetVisible = false
       return true
@@ -1075,6 +1202,42 @@ export default {
       this.todoSheetVisible = false
       this.todoSheetRows = []
       this.todoSheetSeq += 1
+      if (session) this.open(session)
+    },
+    /** 全部定时任务：弹层打开时才拉一次，失败保留上一次的结果。 */
+    async openScheduleSheet() {
+      this.filterMenuVisible = false
+      this.scheduleSheetVisible = true
+      const seq = ++this.scheduleSheetSeq
+      this.scheduleSheetLoading = true
+      try {
+        const result = await loadAllScheduled()
+        if (seq !== this.scheduleSheetSeq) return
+        // stale（被后发请求抢占）/ 离线都保留已有列表，不清空。
+        const merged = mergeScheduledResult(result, this.scheduleSheetRows)
+        if (merged.updated) this.scheduleSheetRows = merged.rows
+        this.scheduleSheetOffline = merged.offline
+      } catch {
+        if (seq === this.scheduleSheetSeq) this.scheduleSheetOffline = false
+      } finally {
+        if (seq === this.scheduleSheetSeq) this.scheduleSheetLoading = false
+      }
+    },
+    closeScheduleSheet() {
+      this.scheduleSheetVisible = false
+      this.scheduleSheetRows = []
+      this.scheduleSheetOffline = false
+      // 作废还在路上的读取，避免关闭后回填旧数据。
+      this.scheduleSheetSeq += 1
+      this.scheduleSheetLoading = false
+    },
+    openScheduleSession(group) {
+      const session = store.sessions.find((item) => item.id === group?.sessionId)
+      this.scheduleSheetVisible = false
+      this.scheduleSheetRows = []
+      this.scheduleSheetOffline = false
+      this.scheduleSheetSeq += 1
+      // 会话已被删掉时留在弹层里：那里还能看到任务内容，进去只会是一页空白。
       if (session) this.open(session)
     },
     async onRefresh() {
@@ -1133,12 +1296,10 @@ export default {
     reconnect() {
       reconnectClient()
     },
-    openEvolution() {
-      if (!this.connected || !this.agentOnline) {
-        uni.showToast({ title: t('请先连接电脑'), icon: 'none' })
-        return
-      }
-      uni.navigateTo({ url: '/pages/evolution/index' })
+    toggleTheme() {
+      // 只做深/浅两态：跟随系统时以当前解析结果为准取反，切完即固定为显式模式。
+      // setThemeMode 内部会写 storage、重算页面配色并刷新系统栏。
+      setThemeMode(store.theme === 'light' ? 'dark' : 'light')
     },
     openSettings() {
       uni.navigateTo({ url: '/pages/settings/index' })
@@ -1902,7 +2063,7 @@ export default {
   gap: 14rpx;
   flex-shrink: 0;
 }
-/* 刷新/设置放大成两个拇指好点的圆角按钮，弱光下也更容易看到。 */
+/* 主题/设置放大成两个拇指好点的圆角按钮，弱光下也更容易看到。 */
 .action {
   display: inline-flex;
   align-items: center;
@@ -2442,6 +2603,58 @@ export default {
   flex-shrink: 0;
   color: var(--accent-soft);
   font-size: calc(20rpx * var(--font-scale));
+}
+/* 定时任务汇总条：与待办/排队条同形，颜色改用强调色区分「排期」与「排队」。 */
+.sched-summary {
+  background: var(--surface);
+  box-shadow: var(--control-shadow);
+}
+.sched-summary-dot {
+  background: var(--accent-line);
+  animation: none;
+}
+.sched-summary-count {
+  color: var(--text);
+}
+.sched-summary-action {
+  color: var(--accent-line);
+}
+.sched-item {
+  align-items: flex-start;
+}
+.sched-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+.sched-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10rpx;
+}
+.sched-kind {
+  color: var(--muted);
+  font-size: calc(20rpx * var(--font-scale));
+}
+.sched-tag {
+  padding: 2rpx 10rpx;
+  border-radius: 8rpx;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: calc(19rpx * var(--font-scale));
+}
+.sched-tag.error {
+  background: var(--pause-soft);
+  color: var(--pause);
+}
+.sched-dot {
+  margin-top: 12rpx;
+}
+.sched-dot.off {
+  opacity: 0.35;
 }
 .sheet-search {
   display: flex;

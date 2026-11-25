@@ -179,26 +179,40 @@ test('单边分隔线与虚线空态框用 --line，不用永远透明的 --bord
   }
 })
 
-test('两端的分隔线随对比度档同步递增', { skip: skipCross }, () => {
-  // 桌面端手写块与两端生成层都由 gen-appearance-css.mjs 产出，但取值写在
-  // 脚本的 LINE_ALPHAS 里；这里比对最终 CSS 里的实际值，一旦只改了一端就报。
+// 桌面端已按设计移除对比度与饱和度设置（见 gen-appearance-css.mjs 文件头：最终色值
+// 直接写在 styles.css 的调色板里，不再生成档位规则）。手机端仍保留这两项，所以跨仓库
+// 比对只在桌面端 CSS 里真的存在该档位时才跑；桌面端以后若重新引入，比对会自动恢复。
+const clientHasAppearanceLevels = clientCss != null && /\.contrast-standard\b/.test(clientCss)
+
+if (clientHasAppearanceLevels) {
+  test('两端的分隔线随对比度档同步递增', () => {
+    // 桌面端手写块与两端生成层都由 gen-appearance-css.mjs 产出，但取值写在
+    // 脚本的 LINE_ALPHAS 里；这里比对最终 CSS 里的实际值，一旦只改了一端就报。
+    const declOf = (css, selector, token) => {
+      const palette = variables(blockOf(css, selector))
+      return palette[token]
+    }
+    for (const level of ['low', 'standard', 'high']) {
+      for (const [mode, appSel, clientSel] of [
+        ['深色', `.contrast-${level} {`, `:root[data-contrast='${level}'] {`],
+        ['浅色', `.theme-light.contrast-${level} {`, `:root[data-theme='light'][data-contrast='${level}'] {`]
+      ]) {
+        for (const token of ['--line', '--line-strong']) {
+          assert.equal(
+            declOf(appVue, appSel, token)?.replace(/\s+/g, ' '),
+            declOf(clientCss, clientSel, token)?.replace(/\s+/g, ' '),
+            `${mode} ${level} 的 ${token} 两端不一致`
+          )
+        }
+      }
+    }
+  })
+}
+
+test('手机端的行线强度随对比度档递增', () => {
   const declOf = (css, selector, token) => {
     const palette = variables(blockOf(css, selector))
     return palette[token]
-  }
-  for (const level of ['low', 'standard', 'high']) {
-    for (const [mode, appSel, clientSel] of [
-      ['深色', `.contrast-${level} {`, `:root[data-contrast='${level}'] {`],
-      ['浅色', `.theme-light.contrast-${level} {`, `:root[data-theme='light'][data-contrast='${level}'] {`]
-    ]) {
-      for (const token of ['--line', '--line-strong']) {
-        assert.equal(
-          declOf(appVue, appSel, token)?.replace(/\s+/g, ' '),
-          declOf(clientCss, clientSel, token)?.replace(/\s+/g, ' '),
-          `${mode} ${level} 的 ${token} 两端不一致`
-        )
-      }
-    }
   }
   const alpha = (value) => Number(/rgba\([^)]*?([\d.]+)\s*\)$/.exec(value)[1])
   for (const [mode, sel] of [
@@ -466,7 +480,10 @@ test('饱和度只改鲜艳程度，不破坏强调色上的文字对比', () =>
 test('标准档写入基准覆盖，低/高档在标准档上继续调整', { skip: skipCross }, () => {
   for (const name of ['contrast', 'saturation']) {
     assert.match(appVue, new RegExp(`\\.${name}-standard`))
-    assert.match(clientCss, new RegExp(`data-${name}='standard'`))
+    // 桌面端已移除这两项设置，只有它真的有档位规则时才要求带着 standard 基准。
+    if (clientHasAppearanceLevels) {
+      assert.match(clientCss, new RegExp(`data-${name}='standard'`))
+    }
   }
 })
 
