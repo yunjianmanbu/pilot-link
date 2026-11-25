@@ -108,7 +108,7 @@ test('非法时间回退到默认值', () => {
 
 test('遮罩只在遮罩上按下过才关闭弹层', () => {
   const sheet = read('components/app-sheet/app-sheet.vue')
-  // 打开入口（汇总条）上抬手后系统补发的合成 click 会落到刚出现的遮罩上，
+  // 打开入口按钮上抬手后系统补发的合成 click 会落到刚出现的遮罩上，
   // 只看 click 会把弹层一起关掉：必须自己按下过遮罩才算用户想关闭。
   assert.ok(sheet.includes('@touchstart="onMaskPress"'), '遮罩缺少 touchstart 记录')
   assert.ok(sheet.includes('@mousedown="onMaskPress"'), '遮罩缺少 mousedown 记录')
@@ -119,17 +119,42 @@ test('遮罩只在遮罩上按下过才关闭弹层', () => {
   assert.ok(sheet.includes('@touchstart.stop'), '弹层本体未阻断 touchstart 冒泡')
 })
 
-test('全部定时任务弹层不清空已有列表', () => {
+test('全部任务与全部分待办走同一条链路', () => {
   const page = read('pages/sessions/index.vue')
   assert.ok(page.includes('mergeScheduledResult'), '弹层未使用合并结果')
   assert.ok(
     !page.includes('this.scheduleSheetRows = Array.isArray(result?.groups)'),
     '弹层仍直接覆盖为空列表'
   )
+  // 入口与「全部待办」同排同款且常驻显示：不再靠「有任务才出现」的顶部汇总条。
+  assert.ok(
+    page.includes('class="todo-entry sched-entry" @click="openScheduleSheet"'),
+    '定时任务入口未做成与全部待办同款的按钮'
+  )
+  assert.ok(!page.includes('sched-summary'), '旧汇总条未移除，入口重复')
+  // 弹层行结构与待办共用同一套 class，改一处两边一起变。
+  for (const cls of ['todo-sheet-group', 'todo-sheet-head', 'todo-sheet-item', 'todo-sheet-dot']) {
+    assert.ok(page.includes(`class="${cls}"`), `弹层未复用 ${cls}`)
+  }
+  assert.ok(page.includes("t('共 {v1} 条定时任务'"), '副标题未与「共 N 条待办」对齐')
   const store = read('store/index.js')
   assert.ok(store.includes('SCHEDULED_ALL_STALE'), 'store 未区分「读取作废」')
   assert.ok(
     store.includes('return { groups: store.scheduledAllGroups.slice(), offline: true, stale: false }'),
     '离线时未沿用上一次的分组'
+  )
+  // 数据链路按会话逐条读（旧版电脑端没有 listAll）；listAll 只能是可选增强。
+  assert.ok(
+    store.includes("request('schedules.list', { sessionId: session.id })"),
+    '未按会话逐个读取定时任务'
+  )
+  const quietStart = store.indexOf('async function requestAllScheduledQuietly')
+  assert.notEqual(quietStart, -1, 'listAll 补充分组未封装成可选函数')
+  const quiet = store.slice(quietStart, store.indexOf('\n}\n', quietStart))
+  assert.ok(quiet.includes("request('schedules.listAll')"), 'listAll 可选函数没有调用 listAll')
+  assert.ok(quiet.includes('catch'), 'listAll 失败时未静默降级')
+  assert.ok(
+    store.includes('if (!answered && !groups.length && store.scheduledAllGroups.length)'),
+    '全部读取都失败时会拿空结果覆盖缓存'
   )
 })

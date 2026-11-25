@@ -56,20 +56,6 @@
         <text class="queue-summary-action">{{ t('查看') }} ›</text>
       </view>
 
-      <!-- 定时任务汇总：会话行里看不出排了几条定时，这里给一个跨会话的入口。
-           桌面端配了定时任务才有这一条，没有就整行不占位置。 -->
-      <view
-        v-if="scheduledSummary.tasks > 0"
-        class="queue-summary sched-summary"
-        @click="openScheduleSheet"
-      >
-        <view class="unread-summary-dot queue-summary-dot sched-summary-dot"></view>
-        <text class="queue-summary-count sched-summary-count">
-          {{ t('{v1} 个定时任务', { v1: scheduledSummary.tasks }) }}
-        </text>
-        <text class="queue-summary-action sched-summary-action">{{ t('查看') }} ›</text>
-      </view>
-
       <view v-if="store.sessions.length > 0" class="filter-bar">
         <view
           v-if="filters.length > 1"
@@ -100,6 +86,15 @@
         <view class="todo-entry" @click="openTodoSheet">
           <text class="todo-entry-label">{{ t('全部待办') }}</text>
           <text v-if="totalTodoCount > 0" class="todo-entry-count">{{ totalTodoCount }}</text>
+        </view>
+
+        <!-- 定时任务跨会话入口：与「全部待办」同排同款，常驻显示。
+             列表行里看不出排了几条定时，这一条不依赖是否已有缓存，点开就现拉。 -->
+        <view class="todo-entry sched-entry" @click="openScheduleSheet">
+          <text class="todo-entry-label">{{ t('全部任务') }}</text>
+          <text v-if="scheduledSummary.tasks > 0" class="todo-entry-count">
+            {{ scheduledSummary.tasks }}
+          </text>
         </view>
 
         <view v-if="filterMenuVisible" class="filter-mask" @click="closeFilterMenu"></view>
@@ -357,10 +352,10 @@
       </scroll-view>
     </app-sheet>
 
-    <!-- 全部定时任务：跨会话看排了哪些定时，点任务行进入对应会话继续处理。 -->
+    <!-- 全部任务：与「全部待办」同款弹层，跨会话看排了哪些定时，点任务行进入对应会话。 -->
     <app-sheet
       :visible="scheduleSheetVisible"
-      :title="t('全部定时任务')"
+      :title="t('全部任务')"
       :subtitle="scheduleSheetSubtitle"
       @close="closeScheduleSheet"
     >
@@ -393,19 +388,19 @@
           <view
             v-for="task in group.tasks"
             :key="task.id"
-            class="todo-sheet-item sched-item"
+            class="todo-sheet-item"
             @click="openScheduleSession(group)"
           >
-            <view class="todo-sheet-dot sched-dot" :class="{ off: task.enabled === false }"></view>
-            <view class="sched-body">
+            <view class="todo-sheet-dot" :class="{ off: task.enabled === false }"></view>
+            <view class="todo-sheet-body">
               <text class="todo-sheet-text">{{ task.content }}</text>
-              <view class="sched-meta">
-                <text class="sched-kind">{{ scheduleKindLabel(task) }}</text>
-                <text v-if="task.enabled === false" class="sched-tag">{{ t('已暂停') }}</text>
-                <text v-else-if="task.lastStatus === 'failed'" class="sched-tag error">
+              <view class="todo-sheet-meta">
+                <text class="todo-sheet-kind">{{ scheduleKindLabel(task) }}</text>
+                <text v-if="task.enabled === false" class="todo-sheet-tag">{{ t('已暂停') }}</text>
+                <text v-else-if="task.lastStatus === 'failed'" class="todo-sheet-tag error">
                   {{ t('上次执行失败') }}
                 </text>
-                <text v-else class="sched-tag">
+                <text v-else-if="scheduleTimeText(task.nextRunAt)" class="todo-sheet-tag">
                   {{ t('下次 {v1}', { v1: scheduleTimeText(task.nextRunAt) }) }}
                 </text>
               </view>
@@ -1013,17 +1008,19 @@ export default {
       for (const group of this.todoSheetGroups) rows += group.items.length + 1
       return `${Math.min(Math.max(rows, 2), 7) * 96}rpx`
     },
-    /** 首页定时汇总条的数量：只算启用中的任务，口径与弹层一致。 */
+    /** 首页「全部任务」入口的数量：算上已暂停的任务，与弹层里能看到的条数一致。 */
     scheduledSummary() {
       let tasks = 0
+      let enabled = 0
       let sessions = 0
       for (const group of store.scheduledAllGroups || []) {
         const list = Array.isArray(group?.tasks) ? group.tasks : []
         if (!list.length) continue
         sessions += 1
-        tasks += list.filter((task) => task?.enabled !== false).length
+        tasks += list.length
+        enabled += list.filter((task) => task?.enabled !== false).length
       }
-      return { tasks, sessions }
+      return { tasks, enabled, sessions }
     },
     scheduleGroups() {
       return buildScheduledGroups(this.scheduleSheetRows, store.sessions).map((group) => ({
@@ -1035,7 +1032,7 @@ export default {
     scheduleSheetSubtitle() {
       if (this.scheduleSheetLoading) return t('正在读取定时任务…')
       const total = this.scheduleGroups.reduce((sum, group) => sum + group.tasks.length, 0)
-      return t('{v1} 个定时任务', { v1: total })
+      return t('共 {v1} 条定时任务', { v1: total })
     },
     scheduleSheetHeight() {
       let rows = 0
@@ -1204,7 +1201,7 @@ export default {
       this.todoSheetSeq += 1
       if (session) this.open(session)
     },
-    /** 全部定时任务：弹层打开时才拉一次，失败保留上一次的结果。 */
+    /** 全部任务：每次打开都现拉一次，和「全部待办」一样先给缓存再补齐。 */
     async openScheduleSheet() {
       this.filterMenuVisible = false
       this.scheduleSheetVisible = true
@@ -1817,7 +1814,9 @@ export default {
   z-index: 30;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 16rpx;
+  row-gap: 12rpx;
   padding: 0 0 16rpx;
 }
 .running-toggle {
@@ -2604,56 +2603,29 @@ export default {
   color: var(--accent-soft);
   font-size: calc(20rpx * var(--font-scale));
 }
-/* 定时任务汇总条：与待办/排队条同形，颜色改用强调色区分「排期」与「排队」。 */
-.sched-summary {
-  background: var(--surface);
-  box-shadow: var(--control-shadow);
-}
-.sched-summary-dot {
-  background: var(--accent-line);
-  animation: none;
-}
-.sched-summary-count {
-  color: var(--text);
-}
-.sched-summary-action {
-  color: var(--accent-line);
-}
-.sched-item {
-  align-items: flex-start;
-}
-.sched-body {
+/* 全部任务弹层沿用待办的行结构，只多一条「计划 + 时间」的副行。 */
+.todo-sheet-body {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 6rpx;
 }
-.sched-meta {
+.todo-sheet-meta {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 10rpx;
 }
-.sched-kind {
+.todo-sheet-kind {
   color: var(--muted);
   font-size: calc(20rpx * var(--font-scale));
 }
-.sched-tag {
-  padding: 2rpx 10rpx;
-  border-radius: 8rpx;
-  background: var(--surface);
-  color: var(--muted);
-  font-size: calc(19rpx * var(--font-scale));
-}
-.sched-tag.error {
+.todo-sheet-tag.error {
   background: var(--pause-soft);
   color: var(--pause);
 }
-.sched-dot {
-  margin-top: 12rpx;
-}
-.sched-dot.off {
+.todo-sheet-dot.off {
   opacity: 0.35;
 }
 .sheet-search {
