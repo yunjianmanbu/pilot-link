@@ -369,10 +369,16 @@
           {{ t('正在读取定时任务…') }}
         </view>
         <view v-else-if="scheduleSheetOffline && !scheduleGroups.length" class="todo-sheet-empty">
-          {{ t('电脑端离线，暂时读不到定时任务') }}
+          <text class="todo-sheet-empty-text">{{ t('电脑端离线，暂时读不到定时任务') }}</text>
+          <text class="todo-sheet-retry" @click="retryScheduleSheet">{{ t('重新读取') }}</text>
+        </view>
+        <view v-else-if="scheduleSheetFailed && !scheduleGroups.length" class="todo-sheet-empty">
+          <text class="todo-sheet-empty-text">{{ t('电脑端暂时没返回定时任务，稍后再点一次') }}</text>
+          <text class="todo-sheet-retry" @click="retryScheduleSheet">{{ t('重新读取') }}</text>
         </view>
         <view v-else-if="!scheduleGroups.length" class="todo-sheet-empty">
-          {{ t('还没有定时任务') }}
+          <text class="todo-sheet-empty-text">{{ t('还没有定时任务') }}</text>
+          <text class="todo-sheet-retry" @click="retryScheduleSheet">{{ t('重新读取') }}</text>
         </view>
         <view
           v-for="group in scheduleGroups"
@@ -698,6 +704,7 @@ export default {
       scheduleSheetLoading: false,
       scheduleSheetRows: [],
       scheduleSheetOffline: false,
+      scheduleSheetFailed: false,
       scheduleSheetSeq: 0,
       updateState: getUpdateDownloadState(),
       updateUnsubscribe: null,
@@ -1032,6 +1039,10 @@ export default {
     scheduleSheetSubtitle() {
       if (this.scheduleSheetLoading) return t('正在读取定时任务…')
       const total = this.scheduleGroups.reduce((sum, group) => sum + group.tasks.length, 0)
+      // 没读到时不报「0 条」：那会让人以为任务被删了。
+      if (!total && (this.scheduleSheetOffline || this.scheduleSheetFailed)) {
+        return t('暂时读不到定时任务')
+      }
       return t('共 {v1} 条定时任务', { v1: total })
     },
     scheduleSheetHeight() {
@@ -1201,12 +1212,16 @@ export default {
       this.todoSheetSeq += 1
       if (session) this.open(session)
     },
-    /** 全部任务：每次打开都现拉一次，和「全部待办」一样先给缓存再补齐。 */
+    /** 全部任务：与「全部待办」一致，先把手上的缓存铺上，再联网补一次。 */
     async openScheduleSheet() {
       this.filterMenuVisible = false
       this.scheduleSheetVisible = true
+      // 缓存就是上一次读到的分组：先用它铺满弹层，避免点开后空白一闪（甚至看起来
+      // 像「什么都没读到」）。联网结果回来后原地替换。
+      this.scheduleSheetRows = (store.scheduledAllGroups || []).slice()
+      this.scheduleSheetFailed = false
       const seq = ++this.scheduleSheetSeq
-      this.scheduleSheetLoading = true
+      this.scheduleSheetLoading = this.scheduleSheetRows.length === 0
       try {
         const result = await loadAllScheduled()
         if (seq !== this.scheduleSheetSeq) return
@@ -1214,8 +1229,12 @@ export default {
         const merged = mergeScheduledResult(result, this.scheduleSheetRows)
         if (merged.updated) this.scheduleSheetRows = merged.rows
         this.scheduleSheetOffline = merged.offline
+        this.scheduleSheetFailed = merged.failed === true
       } catch {
-        if (seq === this.scheduleSheetSeq) this.scheduleSheetOffline = false
+        if (seq === this.scheduleSheetSeq) {
+          this.scheduleSheetOffline = false
+          this.scheduleSheetFailed = this.scheduleSheetRows.length === 0
+        }
       } finally {
         if (seq === this.scheduleSheetSeq) this.scheduleSheetLoading = false
       }
@@ -1224,15 +1243,22 @@ export default {
       this.scheduleSheetVisible = false
       this.scheduleSheetRows = []
       this.scheduleSheetOffline = false
+      this.scheduleSheetFailed = false
       // 作废还在路上的读取，避免关闭后回填旧数据。
       this.scheduleSheetSeq += 1
       this.scheduleSheetLoading = false
+    },
+    /** 「重新读取」：没读到内容时的唯一出口，重走一遍与打开时相同的链路。 */
+    retryScheduleSheet() {
+      if (this.scheduleSheetLoading) return
+      void this.openScheduleSheet()
     },
     openScheduleSession(group) {
       const session = store.sessions.find((item) => item.id === group?.sessionId)
       this.scheduleSheetVisible = false
       this.scheduleSheetRows = []
       this.scheduleSheetOffline = false
+      this.scheduleSheetFailed = false
       this.scheduleSheetSeq += 1
       // 会话已被删掉时留在弹层里：那里还能看到任务内容，进去只会是一页空白。
       if (session) this.open(session)
@@ -2524,10 +2550,24 @@ export default {
   width: 100%;
 }
 .todo-sheet-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16rpx;
   padding: 56rpx 30rpx;
   text-align: center;
   color: var(--dim);
   font-size: calc(24rpx * var(--font-scale));
+}
+.todo-sheet-retry {
+  padding: 10rpx 24rpx;
+  border-radius: 14rpx;
+  background: var(--bg-soft);
+  color: var(--accent-soft);
+  font-size: calc(24rpx * var(--font-scale));
+}
+.todo-sheet-retry:active {
+  opacity: 0.7;
 }
 .todo-sheet-group {
   margin-bottom: 16rpx;

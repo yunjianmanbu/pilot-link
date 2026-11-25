@@ -140,13 +140,25 @@ test('全部任务与全部分待办走同一条链路', () => {
   const store = read('store/index.js')
   assert.ok(store.includes('SCHEDULED_ALL_STALE'), 'store 未区分「读取作废」')
   assert.ok(
-    store.includes('return { groups: store.scheduledAllGroups.slice(), offline: true, stale: false }'),
+    /groups: store\.scheduledAllGroups\.slice\(\), offline: true/.test(store),
     '离线时未沿用上一次的分组'
   )
-  // 数据链路按会话逐条读（旧版电脑端没有 listAll）；listAll 只能是可选增强。
+  // 数据链路：逐会话 schedules.list 是主路径（旧电脑端也支持），listAll 只作补齐。
   assert.ok(
     store.includes("request('schedules.list', { sessionId: session.id })"),
     '未按会话逐个读取定时任务'
+  )
+  const loadStart = store.indexOf('export async function loadAllScheduled')
+  assert.notEqual(loadStart, -1, '缺少 loadAllScheduled')
+  const loadBody = store.slice(loadStart, store.indexOf('\n}\n', loadStart))
+  assert.ok(
+    loadBody.indexOf('await requestAllScheduledQuietly(token)') >
+      loadBody.indexOf("request('schedules.list', { sessionId: session.id })"),
+    'listAll 排在了逐会话读取之前，旧电脑端仍会读空'
+  )
+  assert.ok(
+    store.includes('merged.set(sessionId'),
+    'listAll 的分组没有与逐会话结果合并'
   )
   const quietStart = store.indexOf('async function requestAllScheduledQuietly')
   assert.notEqual(quietStart, -1, 'listAll 补充分组未封装成可选函数')
@@ -154,7 +166,14 @@ test('全部任务与全部分待办走同一条链路', () => {
   assert.ok(quiet.includes("request('schedules.listAll')"), 'listAll 可选函数没有调用 listAll')
   assert.ok(quiet.includes('catch'), 'listAll 失败时未静默降级')
   assert.ok(
-    store.includes('if (!answered && !groups.length && store.scheduledAllGroups.length)'),
+    store.includes('if (!answered && !finalGroups.length)'),
     '全部读取都失败时会拿空结果覆盖缓存'
+  )
+  assert.ok(store.includes('failed: true'), '未把「这次没读到」告诉页面')
+  // 页面要把「没读到」与「没有任务」分开，并且像「全部待办」那样先给缓存。
+  assert.ok(page.includes('scheduleSheetFailed'), '页面未区分「没读到」与「没有任务」')
+  assert.ok(
+    page.includes('this.scheduleSheetRows = (store.scheduledAllGroups || []).slice()'),
+    '打开弹层未先铺缓存'
   )
 })

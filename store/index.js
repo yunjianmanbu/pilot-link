@@ -3983,19 +3983,23 @@ export async function loadScheduled(sessionId = store.currentSessionId) {
 let scheduledAllToken = 0
 
 /**
- * `schedules.listAll` 的可选增强：旧版电脑端没有这个接口，失败就当没有。
+ * `schedules.listAll`：新版电脑端一次给出全部分组（含其它工作区、会话已删除的任务）。
  *
- * 返回分组数组；被后发的读取抢占时返回 SCHEDULED_ALL_STALE，让调用方直接放弃。
+ * 返回 { groups, supported }：supported 为假表示这台电脑端没有该接口（旧版），
+ * 调用方改走逐会话 `schedules.list`。被后发的读取抢占时返回 SCHEDULED_ALL_STALE。
  */
 async function requestAllScheduledQuietly(token) {
   try {
     const data = await request('schedules.listAll')
     if (token !== scheduledAllToken) return SCHEDULED_ALL_STALE
-    if (!Array.isArray(data?.groups)) return []
-    return data.groups.filter((group) => Array.isArray(group?.tasks) && group.tasks.length)
+    if (!Array.isArray(data?.groups)) return { groups: [], supported: false }
+    return {
+      groups: data.groups.filter((group) => Array.isArray(group?.tasks) && group.tasks.length),
+      supported: true
+    }
   } catch {
     if (token !== scheduledAllToken) return SCHEDULED_ALL_STALE
-    return []
+    return { groups: [], supported: false }
   }
 }
 
@@ -4013,27 +4017,26 @@ const SCHEDULED_ALL_STALE = Object.freeze({ groups: null, offline: false, stale:
  *
  * 早先这里只调电脑端 `schedules.listAll` 一次取回全部分组，但那是桌面端后来才有的
  * 接口：旧电脑端直接回「手机端不支持该操作」，返回结构一旦不符又会静默当成空数组，
- * 手机上表现成「点开什么都没有」。现在主路径改成拿首页已有的会话列表逐个会话读
- * `schedules.list`（与 loadPendingTodosBySession 同一套做法），listAll 只在可用时
- * 额外补上其它工作区/已删除会话的任务，不再依赖某个可选接口存在。
- * 返回值：{ groups, offline, stale }——offline 为真时页面提示「电脑端离线」，
- * stale 为真时 groups 为 null，调用方不要覆盖已有列表。
+ * 手机上表现成「点开什么都没有」。所以这里不把任何单一接口当成唯一答案：
+ *   1. 主路径逐个会话读 `schedules.list`（与 loadPendingTodosBySession 同一套做法）；
+ *   2. `schedules.listAll` 可用时再合并一次——它能补上其它工作区与会话已删掉的任务，
+ *      同一会话以它的结果为准（带 missing 标记），接口不存在或报错就不补。
+ * 任一边读到内容就算成功，两边都空才告诉页面「这次没读到」。
+ * 返回值：{ groups, offline, stale, failed }——offline 为真时页面提示「电脑端离线」；
+ * stale 为真时 groups 为 null，调用方不要覆盖已有列表；failed 为真表示这次一条都没读到
+ * （缓存里有的仍是上一次的结果），页面据此说「没读到」而不是「没有任务」。
  */
 export async function loadAllScheduled() {
   const token = ++scheduledAllToken
   if (!scheduledOnline()) {
     // 离线：把上一次读到的分组原样带回去，页面据此说「离线」，而不是「没有任务」。
-    return { groups: store.scheduledAllGroups.slice(), offline: true, stale: false }
+    return { groups: store.scheduledAllGroups.slice(), offline: true, stale: false, failed: false }
   }
   const cached = new Map()
   for (const group of store.scheduledAllGroups || []) {
     if (group?.sessionId) cached.set(String(group.sessionId), group)
   }
   const sessions = store.sessions.filter((session) => session?.id)
-  if (!sessions.length) {
-    // 会话列表还没拉到：保留缓存，别让首页入口的数量凭空归零。
-    return { groups: store.scheduledAllGroups.slice(), offline: false, stale: false }
-  }
   // 会话多时一次并发几十个请求会把中继挤满，按 4 个一批顺序发。
   const results = []
   for (let index = 0; index < sessions.length; index += 4) {
@@ -4074,25 +4077,24 @@ export async function loadAllScheduled() {
     if (seen.has(sessionId) || !group?.tasks?.length) continue
     groups.push({ ...group, missing: true })
   }
-  // 新版电脑端还能一次给出全部分组（含其它工作区、会话已删除的任务）：额外
-  // 补进来。这是锦上添花——接口不存在、报错、结构不对都不影响上面那批结果。
-  const extra = await requestAllScheduledQuietly(token)
-  if (extra === SCHEDULED_ALL_STALE) return SCHEDULED_ALL_STALE
-  const known = new Set(groups.map((group) => String(group.sessionId)))
-  for (const group of extra) {
+  // 第二路：列表接口能一次给出所有工作区的分组。它只是补齐手段，拿不到不影响上面那批。
+  const all = await requestAllScheduledQuietly(token)
+  if (all === SCHEDULED_ALL_STALE) return SCHEDULED_ALL_STALE
+  const merged = new Map(groups.map((group) => [String(group.sessionId), group]))
+  for (const group of all.groups || []) {
     const sessionId = String(group?.sessionId || '')
-    if (!sessionId || known.has(sessionId) || !group?.tasks?.length) continue
-    known.add(sessionId)
-    groups.push(group)
+    if (!sessionId || !group?.tasks?.length) continue
+    merged.set(sessionId, { ...group, sessionId })
   }
-  // 一个会话都没读成功、又没从 listAll 拿到东西时，不能拿空结果覆盖缓存，
-  // 否则首页入口的数量会整片消失。
-  if (!answered && !groups.length && store.scheduledAllGroups.length) {
-    return { groups: store.scheduledAllGroups.slice(), offline: false, stale: false }
+  const finalGroups = [...merged.values()]
+  // 两条路都没读到：不能拿空结果覆盖缓存，否则入口的数量会整片消失；同时告诉
+  // 调用方「这次没读到」，别把弹层显示成「还没有定时任务」。
+  if (!answered && !finalGroups.length) {
+    return { groups: store.scheduledAllGroups.slice(), offline: false, stale: false, failed: true }
   }
-  store.scheduledAllGroups = groups
+  store.scheduledAllGroups = finalGroups
   store.scheduledAllAt = new Date().toISOString()
-  return { groups, offline: false, stale: false }
+  return { groups: finalGroups, offline: false, stale: false, failed: false }
 }
 
 /** 首页汇总条的数量：启用中的任务数与会话数，口径与弹层一致。 */
