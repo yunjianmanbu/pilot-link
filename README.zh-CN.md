@@ -180,16 +180,24 @@ node pilot/scripts/build-app-web.mjs --cli "/d/soft/HBuilderX.4.24.2024072208/HB
 `D:\soft\HBuilderX.*` / `Program Files` / `/Applications`），退出码 0 = 产物就绪，
 1 = 构建失败或产物不合格，2 = 找不到 CLI。
 
-构建完想知道这两页在浏览器里到底渲染出什么，跑端到端校验（自带静态服务，
-需要一个开着 DevTools 端口的 Edge/Chrome；它种一份假配对与缓存，断言「链接」
-「记忆」两页有内容、正文里的网址点得开）：
+构建完想知道这几页在浏览器里到底渲染出什么，跑端到端校验（自带静态服务与浏览器启动，
+不需要自己去起 Edge；它种一份假配对与缓存，断言「链接」「记忆」两页有内容、正文里的网址点得开、
+首页「全部定时任务」弹层不被抬手补发的合成 click 关掉）：
 
 ```bash
-node pilot/scripts/verify-app-h5.mjs                    # 默认产物 + CDP 9333 + 端口 4189
-node pilot/scripts/verify-app-h5.mjs --cdp 9334 --json   # 换调试端口 / 机器可读输出
+node pilot/scripts/verify-app-h5.mjs --launch               # 全跑：自己起 headless Edge（CDP 9333 + 端口 4189）
+node pilot/scripts/verify-app-h5.mjs --spec=sched --launch  # 只跑定时任务弹层的触摸断言（最快的回归）
+node pilot/scripts/verify-app-h5.mjs --cdp 9334 --json      # 复用已在跑的浏览器 / 机器可读输出
+node pilot/scripts/verify-app-h5.mjs --edge "D:/soft/msedge.exe"   # 换浏览器可执行文件（也可用 MSEDGE 环境变量）
 ```
 
-退出码 0 = 三项都通过，1 = 有断言失败（详情在 stderr），2 = 没有产物或连不上调试端口。
+`--spec=sched` 用 CDP 的 `Input.dispatchTouchEvent` 送真实触摸序列，因为「点开闪一下就消失」
+这类 click-through 缺陷用鼠标事件和 `element.click()` 都复现不出来：手机在 touchend 之后才给
+合成 click 定目标，那一下正好落在刚铺满屏幕的遮罩上。断言四条：触摸汇总条后弹层打开、
+抬手补发合成 click 后仍打开、手指按遮罩能关、关掉后还能再打开。
+
+退出码 0 = 全部断言通过，1 = 有断言失败（详情在 stderr），2 = 没有产物 / 找不到浏览器 / 连不上调试端口。
+`--spec=legacy` 只跑链接与记忆那三组旧断言。
 
 只想重铺壳文件而不重新构建时，单独跑底层脚本：
 
