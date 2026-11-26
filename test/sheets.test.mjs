@@ -142,11 +142,11 @@ test('全部任务与全部分待办走同一条链路', () => {
   // 这一条在真机上点了却毫无反应，说明可疑面全在弹层那一侧，跳页把它整个绕开。
   assert.ok(
     page.includes('class="todo-entry sched-entry"') &&
-      page.includes('@click="openSchedulePage"') &&
-      // 入口下方那行常驻说明：读不到时用户至少还有字可看。
-      page.includes('class="sched-trace"'),
-    '定时任务入口未做成与全部待办同款的按钮（或缺常驻说明行）'
+      page.includes('@click="openSchedulePage"'),
+    '定时任务入口未做成与全部待办同款的按钮'
   )
+  // 入口下方那行调试用常驻说明（条数 / 点击回执）已随 1.1.27 删除。
+  assert.ok(!page.includes('sched-trace'), '调试用常驻说明行未删除，首页会多一行打印')
   assert.ok(!page.includes('sched-summary'), '旧汇总条未移除，入口重复')
   // 弹层行结构与待办共用同一套 class，改一处两边一起变。
   for (const cls of ['todo-sheet-group', 'todo-sheet-head', 'todo-sheet-item', 'todo-sheet-dot']) {

@@ -1,6 +1,6 @@
 # 开源推广素材包（awesome / HelloGitHub / 社区发帖）
 
-这份文件解决一个具体问题：四个仓库的 README 首屏已经有动图、分享卡片和双语版本，但项目 stars 仍是 0 ——
+这份文件解决一个具体问题：三个仓库的 README 首屏已经有动图、分享卡片和双语版本，但项目 stars 仍是 0 ——
 缺的不是质量，是**被人看见的第一个入口**。这里把「入口」需要的东西全部写成可直接复制粘贴的文本，
 免得每次发帖都要重新组织语言。
 
@@ -11,7 +11,7 @@
 | 首屏演示 GIF | `pilot/<子项目>/docs/social/{en,zh}/demo.gif` | README 首屏，由 `pilot/scripts/gen-readme-demo-gif.mjs` 从真实截图生成 |
 | 分享卡片 | `pilot/<子项目>/docs/social/{en,zh}/social-preview.png` | GitHub 仓库 Settings → Social preview 手工上传；Gitee 在仓库设置里传 |
 
-> 本文件会随 `split-repos.mjs` 复制到四个公开仓的 `docs/open-source-promotion.md`；
+> 本文件会随 `split-repos.mjs` 复制到三个公开仓的 `docs/open-source-promotion.md`；
 > 在单仓里上表路径简化为 `docs/social/{en,zh}/`（图随子项目一起带走）。
 
 > GitHub 没有「自荐」按钮，也没有 Gitee 的 GVP / 推荐位；GitHub 上唯一的发现渠道是
@@ -22,13 +22,12 @@
 
 ## 1. 一句话定位（先统一口径）
 
-不同地方对字数要求不同，四个仓库各自一句，避免每次临时改写导致说法漂移。
+不同地方对字数要求不同，三个仓库各自一句，避免每次临时改写导致说法漂移。
 
 | 仓库 | 一句话（中文，约 40 字） | One line (English, ~110 chars) |
 | --- | --- | --- |
 | `pilot` | 本地优先的桌面编程智能体：读代码、跑命令、改文件、自己验证，全部在一个文件夹里，不注册不上云。 | A local-first desktop coding agent: reads your code, runs commands, edits files, verifies the result. No sign-in, no cloud. |
 | `pilot-link` | 把电脑上的智能体接到手机上：扫码配对，远程发任务、看输出、按风险等级审批。 | The phone side of Pilot: pair by QR, send tasks from your phone, watch output live, approve by risk level. |
-| `pilot-client` | 反过来：让电脑端操作你授权的手机，每类能力单独授权，全部动作进脱敏审计。（Beta） | Beta: let the desktop operate a phone you authorize — per-capability grants, every action in a redacted audit log. |
 | `pilot-connector` | 一条命令自建的盲中继，跨网络连手机，只按房间转发帧、不落盘、不持有密钥。 | A blind relay you deploy yourself: forwards frames by room, stores nothing, holds no keys. |
 
 **统一禁忌**：不要用「国内的 Cursor / Devin」这类借势说法（既得罪对方用户，也容易在 awesome 列表 PR 里被判为营销）。
@@ -107,7 +106,7 @@ HelloGitHub 的收录是编辑人工挑选，自荐入口在 <https://hellogithu
 推荐理由：
   1. 本地优先是设计而不是开关：没有云数据库，会话、记忆、审计日志全部落在自己的磁盘上；
   2. 可验证的改动流程：diff → 验收命令 → 回退点，适合把 Agent 用在自己真实项目上的场景；
-  3. 四端协作：桌面端 + Android 控制端 + 手机反控端（Beta）+ 自建盲中继，都能自己部署。
+  3. 三端协作：桌面端 + Android 控制端 + 自建盲中继，都能自己部署。
   4. 代码全开源（Apache-2.0），每个子项目都有中英双版 README、截图与架构图。
 项目语言：TypeScript / JavaScript
 许可协议：Apache-2.0
@@ -139,7 +138,7 @@ HelloGitHub 的收录是编辑人工挑选，自荐入口在 <https://hellogithu
    - 改动必须过审，回答与改动长得不一样（`change-review.png`、`answer-changes.png`）
    - 执行前有回退点（`checkpoint-dialog.png`）
 3. **一个具体例子**：跑一次真实任务，贴出 diff、验收命令和回退点。
-4. **边界**：Beta 的被控端明确列出「需要原生服务的能力尚未接通，一律返回 not_granted」，主动写出限制比藏起来更可信。
+4. **边界**：明确列出尚未接通的能力（如系统级自动化），主动写出限制比藏起来更可信。
 5. **文末**：GitHub 与 Gitee 双链接 + 下载页；说明中继要自己部署（没有公共中继）。
 
 ---

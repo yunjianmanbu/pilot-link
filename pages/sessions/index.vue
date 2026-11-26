@@ -117,18 +117,6 @@
           </view>
         </view>
 
-        <!-- 入口下方常驻一行说明：不管点没点开，这里都有字可看。
-             点了之后会写上下一次点击的回执（时刻 + 走到了哪一步），真机上
-             「没反应」靠这一行就能定案，不必再靠猜发版。 -->
-        <view
-          class="sched-trace"
-          @touchstart="noteScheduleTouch"
-          @touchend="onScheduleTouchEnd"
-          @click="openSchedulePage"
-        >
-          <text class="sched-trace-text">{{ scheduledTraceText }}</text>
-        </view>
-
         <view v-if="filterMenuVisible" class="filter-mask" @click="closeFilterMenu"></view>
 
         <view v-if="filterMenuVisible" class="filter-menu" @click.stop>
@@ -772,8 +760,7 @@ export default {
       scheduleSheetRetrying: false,
       scheduleSheetBusy: false,
       scheduleSheetSeq: 0,
-      // 入口点击的回执与触摸起点：真机上「点了没反应」时唯一的定案依据。
-      scheduleTapTrace: '',
+      // 触摸起点：用来把「点按」和「滑动」分开，滑动抬手不该跳页。
       scheduleTouchStart: null,
       // 上一次真正触发跳页的时刻：用来分辨「同一次手势的余波」与「用户又点了一下」。
       scheduleJumpAt: 0,
@@ -1086,36 +1073,14 @@ export default {
       for (const group of this.todoSheetGroups) rows += group.items.length + 1
       return `${Math.min(Math.max(rows, 2), 7) * 96}rpx`
     },
-    /**
-     * 入口下方那行常驻说明：有没有定时任务都写清，点过之后附上这一次的回执。
-     *
-     * 开头永远带上当前运行版本（热更后是资源包版本）：真机上「点了没反应」时，
-     * 这一行是唯一不依赖点击就能读到的证据 —— 有没有这行、写着哪个版本，
-     * 一眼就能分清「没热更到新版」和「新版点了仍然不跳」。
-     */
-    scheduledTraceText() {
-      const summary = this.scheduledSummary
-      const base = summary.tasks
-        ? t('定时任务 {v1} 条，{v2} 条启用', { v1: summary.tasks, v2: summary.enabled })
-        : t('还没有定时任务')
-      const head = `${this.versionLabel} · ${base}`
-      return this.scheduleTapTrace
-        ? `${head} · ${this.scheduleTapTrace}`
-        : `${head} · ${t('点上面「任务」看全部')}`
-    },
-    /** 首页「全部任务」入口的数量：算上已暂停的任务，与弹层里能看到的条数一致。 */
+    /** 首页「任务」入口角标：算上已暂停的任务，与任务页里能看到的条数一致。 */
     scheduledSummary() {
       let tasks = 0
-      let enabled = 0
-      let sessions = 0
       for (const group of store.scheduledAllGroups || []) {
         const list = Array.isArray(group?.tasks) ? group.tasks : []
-        if (!list.length) continue
-        sessions += 1
         tasks += list.length
-        enabled += list.filter((task) => task?.enabled !== false).length
       }
-      return { tasks, enabled, sessions }
+      return { tasks }
     },
     scheduleGroups() {
       return buildScheduledGroups(this.scheduleSheetRows, store.sessions).map((group) => ({
@@ -1312,20 +1277,6 @@ export default {
       this.todoSheetSeq += 1
       if (session) this.open(session)
     },
-    /**
-     * 全部任务：跳独立页面。
-     *
-     * 首页这一排的弹层在真机上出现过「点了完全没反应」——同排的「全部待办」正常，
-     * 说明点击与 app-sheet 都可用，剩下的可疑面全在弹层这一侧（遮罩、动画、
-     * 同页 7 个 app-sheet、高度计算）。跳页把这一整块绕开：点击只做一件事，
-     * 页面自己带版本与诊断行，读不到也有话可看。跳页本身失败时退回弹层，
-     * 不让这一次点击又变成没反应。
-     */
-    /** 点按时刻：HH:mm:ss，写进入口下方那行回执里，真机上一眼可读。 */
-    clockText(date) {
-      const pad = (value) => String(value).padStart(2, '0')
-      return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
-    },
     /** 触摸起点：用来把「点按」和「滑动」分开，滑动抬手不该跳页。 */
     noteScheduleTouch(event) {
       const point = event?.touches?.[0] || event?.changedTouches?.[0] || null
@@ -1348,54 +1299,43 @@ export default {
         // 移动超过 24px 算滑动（原先 12px 太紧：真机上拇指点这个 30px 高的入口，
         // 抬手时抖动十几像素很常见，会被当成滚动静默丢掉，看起来就是「点了没反应」）。
         if (dx > 24 || dy > 24) {
-          // 即使判定为滑动也要留痕：否则界面上完全没变化，分不清是没点中还是被丢了。
-          this.scheduleTapTrace = t('{v1} 这一下判成了滑动（{v2}px），没跳页', {
-            v1: this.clockText(new Date()),
-            v2: Math.round(Math.max(dx, dy))
-          })
+          // 滑动抬手不跳页：这一下是滚列表的副作用，不是想进任务页。
           return
         }
       }
       this.openSchedulePage()
     },
+    /**
+     * 全部任务：跳独立页面。
+     *
+     * 首页这一排的弹层在真机上出现过「点了完全没反应」——同排的「全部待办」正常，
+     * 说明点击与 app-sheet 都可用，剩下的可疑面全在弹层这一侧（遮罩、动画、
+     * 同页 7 个 app-sheet、高度计算）。跳页把这一整块绕开：点击只做一件事，
+     * 页面自己带版本与诊断行，读不到也有话可看。跳页本身失败时退回弹层，
+     * 不让这一次点击又变成没反应。
+     */
     openSchedulePage() {
       // App 端 navigateTo 走原生，合成 click 的目标仍是这个入口按钮：
       // 不拦就会连开两层。H5 下则是落在新页面上，靠新页自己的窗口拦。
-      // 同一个手势会有 touchend 与 click 两次，第二次静默丢弃（不改回执，
-      // 否则「已打开」会被后到的这次覆盖成看起来失败的样子）。
+      // 同一个手势会有 touchend 与 click 两次，第二次直接丢弃。
       if (tapGuarded()) {
-        // 同一次手势的第二次事件（touchend 之后补发的 click）：上一手已经写过
-        // 回执，这里必须静默，否则「正在跳转 / 已打开」会被后到的这一次覆盖成
-        // 「被余波拦下」，看起来像失败。
         if (Date.now() - this.scheduleJumpAt < 1500) return
-        // 真的被上一手的余波拦下（用户连着点了两下）也要留痕：否则真机上
-        // 看到的仍然是一片静止，分不清事件没进来还是被防穿透窗口吞了。
-        this.scheduleTapTrace = t('{v1} 这一下没跳页：被上一下的余波拦下', {
-          v1: this.clockText(new Date())
-        })
+        // 被上一手的防穿透窗口拦住（用户连着点了两下）：这一次不开页。
         return
       }
       this.scheduleJumpAt = Date.now()
       // 抬手后浏览器还会补一次 click：这次点击会落在刚画出来的新页面上。
       // 开窗口吞掉它，否则新页上同坐标的那一行会被“点”进去。
       armTapGuard(600)
-      const at = this.clockText(new Date())
-      this.scheduleTapTrace = t('{v1} 点开任务，正在跳转…', { v1: at })
       uni.navigateTo({
         url: '/pages/tasks/index',
-        success: () => {
-          this.scheduleTapTrace = t('{v1} 已打开任务页', { v1: at })
-        },
-        fail: (error) => {
-          const reason = String(error?.errMsg || error || '').replace(/^navigateTo:fail\s*/i, '')
-          this.scheduleTapTrace = t('{v1} 跳转失败：{v2}，已退回弹层', {
-            v1: at,
-            v2: reason || 'fail'
-          })
+        fail: () => {
+          // 跳页失败退回弹层，不让这一次点击变成没反应。
           void this.openScheduleSheet()
         }
       })
     },
+
     /** 全部任务（弹层版）：保留给跳页失败的降级路径。 */
     async openScheduleSheet() {
       this.filterMenuVisible = false
@@ -2111,18 +2051,6 @@ export default {
   background: rgba(152, 183, 158, 0.14);
   padding: 2rpx 8rpx;
   border-radius: 20rpx;
-}
-/* 入口下方那行常驻说明：独占一行，但不能小到看不见。
-   它同时承担「当前运行版本」与「上一次点击的回执」，真机排查全靠这一行，
-   所以字号与对比度按正文的次要级来，而不是灰到看不见的脚注。 */
-.sched-trace {
-  flex: 0 0 100%;
-  padding: 6rpx 4rpx 2rpx;
-}
-.sched-trace-text {
-  color: var(--muted);
-  font-size: calc(24rpx * var(--font-scale));
-  opacity: 0.92;
 }
 /* 进行中后面的「待办」：和筛选、进行中同一排，空间不够时让筛选先收缩。 */
 .todo-entry {

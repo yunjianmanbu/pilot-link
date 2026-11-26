@@ -10,7 +10,7 @@ Pilot 会在用户机器上执行命令、读写文件、连手机、访问模�
 | 组件 | 支持范围 |
 | --- | --- |
 | 桌面端（Windows 安装包） | 最新正式版及上一个次版本 |
-| Pilot Link / Pilot Client（Android） | 最新上架版本，`minSdkVersion` 23 起 |
+| Pilot Link（Android） | 最新上架版本，`minSdkVersion` 23 起 |
 | 中继连接器 | 最新 `pilot-connector/latest.json` 对应版本 |
 
 旧版本反馈的问题我们会先请升级，再判断是否需要回补。

@@ -5,13 +5,12 @@
 
 ## 仓库结构
 
-Pilot 由 4 个开源子项目组成，各自是一个仓库：
+Pilot 由 3 个开源子项目组成，各自是一个仓库：
 
 | 仓库 | 内容 | 主要语言 |
 | --- | --- | --- |
 | `pilot` | Electron 桌面客户端（主进程 / 渲染进程 / 内置 CLI / CLI 的 Web 控制台） | TypeScript、React |
 | `pilot-link` | Pilot Link 手机端（uni-app）+ Android 壳原生工程 | Vue 3、Java |
-| `pilot-client` | Pilot Client 手机反控端（uni-app） | Vue 3 |
 | `pilot-connector` | 中继连接器（WebSocket 盲转发） | Node.js |
 
 `site`（官网与下载清单）不开源，也不单独建仓库；`scripts`（构建 / 打包 / 发布 / 校验工具）、
@@ -26,7 +25,6 @@ Pilot 由 4 个开源子项目组成，各自是一个仓库：
 ```bash
 cd pilot          && pnpm install && pnpm dev   # 桌面端开发
 cd pilot-link     && npm install && npm test    # 手机端单测
-cd pilot-client   && npm install && npm test    # 手机反控端单测
 ```
 
 ## 提交前必须自测
@@ -35,7 +33,6 @@ cd pilot-client   && npm install && npm test    # 手机反控端单测
 | --- | --- |
 | `pilot` | `pnpm typecheck && pnpm test` |
 | `pilot-link` | `npm test` |
-| `pilot-client` | `npm test` |
 | `pilot-connector` | 见 `pilot-connector/README.md` 的部署验证一节 |
 
 改到跨仓库共享脚本（`scripts/`）时，受影响的两个仓库都要跑一遍。

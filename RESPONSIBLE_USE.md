@@ -1,7 +1,7 @@
 # 负责任使用与反滥用政策
 
 **English summary at the end.** 本文件适用于 Pilot 的全部组件：桌面端（含内置 CLI 与 Web 控制台）、
-Pilot Link（手机端，手机控电脑）、Pilot Client（手机反控端，电脑控手机）、Pilot Connector（自建中继器）。
+Pilot Link（手机端，手机控电脑）、Pilot Connector（自建中继器）。
 
 > 一句话：**这套软件只能用于你拥有、或已获得设备所有者明确授权的设备。**
 > 我们不会为了"更好卖"给任何能力留后门，也不会为拿它作恶的人背书。
@@ -15,13 +15,7 @@ Pilot Link（手机端，手机控电脑）、Pilot Client（手机反控端，�
 
 | 产品上已经做死的选择 | 位置 |
 | --- | --- |
-| 不做静默后台录屏 / 录音：屏幕采集必须前台可见提示 + 通知栏常驻 | [`reverse-control-plan.md`](https://github.com/yunjianmanbu/pilot-client/blob/main/docs/reverse-control-plan.md) 第四节 |
-| 清空手机、重启手机属 L4，**默认策略上限 L3，直接拒绝**，要显式放开 | `pilot-client/lib/reverse-control.js` 的 `DEFAULT_POLICY` |
-| L2 以上每条命令都要手机端逐次确认，确认失败按拒绝处理 | `reverse-control.js` 的 `createGateway` |
-| 每条命令都写审计，**包括被拒绝、参数非法、执行失败的** | 同上，`fail()` 与成功分支各写一条 |
-| 审计里剪贴板正文等敏感参数脱敏，只留时间 / 等级 / 结果 / 耗时 | `pilot-client/lib/audit.js` |
-| 清空审计要二次确认，且历史不在电脑端留副本 | `pilot-client/pages/audit/index.vue` |
-| 用户至少有三条独立路径发现"有人在操作我的手机"：悬浮提示、通知栏、审计记录 | 方案文档第四节第 3 条 |
+| 每处文件改动都要过审：按文件的 diff 对比 + 执行前回退点，危险命令在策略层直接拦下 | `pilot/src/main/agent/permission-policy.ts` |
 | 中继是**盲转发**：不落盘、不解析载荷，因此也不可能被要求交出货真价实的内容 | [`pilot-connector` README](https://github.com/yunjianmanbu/pilot-connector#security-model)、其 `SECURITY.md` |
 
 我们明确拒绝把它做成"监控软件"。这不是因为技术上做不到，而是因为那条路同时毁掉应用商店资格、
@@ -58,7 +52,7 @@ Pilot Link（手机端，手机控电脑）、Pilot Client（手机反控端，�
   项目也不再是 OSI 认可的开源项目 —— 而开源带来的信任与分发正是这个产品的基础。
   一句自己加上去的限制，法律上多半无效，商业上却会失去开源身份，是两头落空。
 - **真正可用的杠杆只有三个**：
-  1. **商标**：Apache-2.0 第 6 条不授予商标权，`Pilot` / `Pilot Link` / `Pilot Client` 的名称与 Logo
+  1. **商标**：Apache-2.0 第 6 条不授予商标权，`Pilot` / `Pilot Link` 的名称与 Logo
      不在代码许可范围内，修改版不得暗示官方关联（见 `NOTICE`）。
   2. **不作担保**：Apache-2.0 第 7、8 条已经排除了担保与衍生责任。
   3. **本文件作为意图证据**：它记录"官方支持什么、从未支持什么"。
@@ -72,10 +66,7 @@ Pilot Link（手机端，手机控电脑）、Pilot Client（手机反控端，�
 
 | 护栏 | 默认值 | 位置 |
 | --- | --- | --- |
-| 危险能力上限 | `maxLevel: 3`，L4（清空手机 / 重启）默认拒绝 | `pilot-client/lib/reverse-control.js` |
-| 逐次确认 | L2 及以上每条命令都要手机端确认 | 同上 `createGateway` |
-| 调用限流 | 每条命令 60 次 / 分钟 | 同上 `DEFAULT_POLICY.perMinute` |
-| 审计 | 全路径记录，脱敏，最多 200 条 | `pilot-client/lib/audit.js` |
+| 改动审批 | 每处文件改动都要过审，危险命令在策略层拒绝 | `pilot/src/main/agent/permission-policy.ts` |
 | 中继监听地址 | `BIND=127.0.0.1`，只允许反代接入 | `pilot-connector/server.mjs` |
 | 中继房间 / 帧 / 速率 | 每房间最多 4 台手机、单帧 1 MB、每条连接 900 条 / 分钟、心跳连丢 3 次断开 | 同上 |
 | **按来源 IP 的连接上限** | `MAX_CONNECTIONS_PER_IP=64`（`0` 关闭） | 同上，`upgrade` 阶段计数 |
@@ -119,8 +110,6 @@ Pilot Link（手机端，手机控电脑）、Pilot Client（手机反控端，�
 - [ ] 员工场景已履行当地法律要求的告知 / 协商程序（工会、公示、隐私政策），并只用于工作设备。
 - [ ] 中继地址使用 `wss://`，`BIND` 保持回环，TLS 终结在 nginx / Caddy，不直接暴露明文 WebSocket。
 - [ ] 中继启用了 `RELAY_BLOCK_IPS` 应急预案与 `RELAY_ACCESS_STRICT=1`，且日志保留策略符合当地法律（中继本身不记内容，这一点要写进告知书）。
-- [ ] 手机端 `maxLevel` 按最小必要设置（只做屏幕协助就停在 L2），`wipe` / `reboot` 保持默认关闭。
-- [ ] 审计记录的留存与导出流程明确；知道审计只存在手机本机、清空不可恢复。
 - [ ] 配对凭据与二维码按一次性凭据管理，不截图外传、不进共享文档。
 - [ ] 已在自己的隐私政策 / 服务条款里声明调用哪一方、用于什么目的。
 - [ ] 出事时有指定负责人与对外口径（谁能停服务、谁能对外说话）。
@@ -149,13 +138,12 @@ Pilot Link（手机端，手机控电脑）、Pilot Client（手机反控端，�
 
 ## English summary
 
-**Intended use.** Pilot's desktop app, Pilot Link, Pilot Client and Pilot Connector may only be used on
+**Intended use.** Pilot's desktop app, Pilot Link and Pilot Connector may only be used on
 devices you own or are explicitly authorized to control.
 
-**Not a covert monitoring tool.** The defaults are code, not promises: destructive commands
-(`rc.device.wipe`, `rc.device.reboot`) sit above the default policy ceiling and are refused; every
-level-2+ command needs an on-phone confirmation; every command — including refused and failed ones —
-is written to a redacted on-device audit log; the relay never stores or parses frame payloads.
+**Not a covert monitoring tool.** The defaults are code, not promises: every file change goes through
+an explicit review step with a per-file diff and a rollback point before it lands, and the relay never
+stores or parses frame payloads.
 
 **Prohibited.** Controlling devices without the owner's consent; covert monitoring of a partner,
 child, employee or tenant; stealing credentials, SMS, files or screen content; bulk account farming,

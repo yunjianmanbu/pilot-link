@@ -64,16 +64,18 @@ test('入口同时绑 touchend：真机上 click 丢失时仍能跳页', () => {
   )
 })
 
-test('入口下方的常驻行带当前运行版本，不点也能看到跑的是哪一版', () => {
+test('入口下方不再打调试说明行（版本 / 条数 / 点击回执）', () => {
   const source = read('pages/sessions/index.vue')
-  const start = source.indexOf('scheduledTraceText() {')
-  assert.ok(start > 0, '缺 scheduledTraceText')
-  const body = source.slice(start, start + 700)
-  assert.ok(body.includes('this.versionLabel'), '常驻行没有带版本号')
-  // 字号不能再掉回脚注级：真机上正是太小才像「没有这一行」。
-  const traceStyle = source.indexOf('.sched-trace-text {')
-  const css = source.slice(traceStyle, traceStyle + 200)
-  assert.match(css, /font-size: calc\(24rpx/, '说明行字号太小')
+  // 那一行是查「点了没反应」时的排查工具，不是给用户看的：任务总数已经在
+  // 入口右侧的角标上，任务页自己也有版本与诊断行。
+  for (const gone of [
+    'sched-trace',
+    'scheduledTraceText',
+    'scheduleTapTrace',
+    "t('定时任务 {v1} 条，{v2} 条启用'"
+  ]) {
+    assert.ok(!source.includes(gone), `首页仍残留调试说明行：${gone}`)
+  }
 })
 
 test('全部任务页自带版本与诊断行，读不到也有可见内容', () => {
