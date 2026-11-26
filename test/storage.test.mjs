@@ -275,6 +275,70 @@ test('待办缓存按电脑与会话分开保存，并保留已发送状态', ()
   assert.equal(storage.loadTodosCache('device-a', 's1').length, 0)
 })
 
+test('全部任务的分组缓存按设备落盘，冷启动读回同样的结构', () => {
+  reset()
+  const key = 'pilot-app.scheduled-cache.v1.device-a'
+  const groups = [
+    {
+      sessionId: 's1',
+      sessionTitle: '会话一',
+      workspacePath: 'E:/proj',
+      missing: false,
+      tasks: [
+        {
+          id: 't1',
+          sessionId: 's1',
+          content: '每 30 分钟看看日志',
+          kind: 'interval',
+          intervalMinutes: 30,
+          nextRunAt: '2026-03-01T01:00:00.000Z',
+          enabled: true,
+          extra: '白名单外的字段应被丢掉'
+        }
+      ]
+    },
+    // 没有任务的组不占位置，读回来时也不会变成空标题。
+    { sessionId: 's2', tasks: [] }
+  ]
+  assert.equal(storage.saveScheduledCache('device-a', groups), true)
+  assert.ok(memory.has(key))
+
+  const loaded = storage.loadScheduledCache('device-a')
+  assert.equal(loaded.length, 1)
+  assert.equal(loaded[0].sessionId, 's1')
+  assert.equal(loaded[0].tasks.length, 1)
+  assert.equal(loaded[0].tasks[0].content, '每 30 分钟看看日志')
+  assert.equal(loaded[0].tasks[0].intervalMinutes, 30)
+  // 只存弹层要渲染的字段，别把整份电脑端返回对象堆进 storage。
+  assert.equal(loaded[0].tasks[0].extra, undefined)
+  // 换一台电脑读不到别人的任务。
+  assert.deepEqual(storage.loadScheduledCache('device-b'), [])
+
+  // 存空列表等于「没有可显示的」，键要删掉，别留一份空壳。
+  assert.equal(storage.saveScheduledCache('device-a', []), true)
+  assert.equal(memory.has(key), false)
+  assert.deepEqual(storage.loadScheduledCache('device-a'), [])
+})
+
+test('定时任务缓存超过 7 天或版本不符时视为没读到', () => {
+  reset()
+  const key = 'pilot-app.scheduled-cache.v1.device-a'
+  const groups = [
+    { sessionId: 's1', tasks: [{ id: 't1', content: '任务', kind: 'interval' }] }
+  ]
+  storage.saveScheduledCache('device-a', groups)
+  const raw = JSON.parse(memory.get(key))
+  raw.at = Date.now() - 8 * 24 * 60 * 60 * 1000
+  memory.set(key, JSON.stringify(raw))
+  assert.deepEqual(storage.loadScheduledCache('device-a'), [])
+
+  storage.saveScheduledCache('device-a', groups)
+  const stale = JSON.parse(memory.get(key))
+  stale.v = 99
+  memory.set(key, JSON.stringify(stale))
+  assert.deepEqual(storage.loadScheduledCache('device-a'), [])
+})
+
 test('离线待办按设备持久化，空列表会删除存储键', () => {
   reset()
   const key = 'pilot-app.offline-todos.v1.device-a'
@@ -370,6 +434,9 @@ test('会话知识库缓存会截断超长回复并清理过旧数据', () => {
 test('解除电脑时一次性清掉待办、离线队列、正文与知识库缓存', () => {
   reset()
   storage.saveTodosCache('device-a', 's1', [{ id: 't1', text: '待办' }])
+  storage.saveScheduledCache('device-a', [
+    { sessionId: 's1', tasks: [{ id: 'st1', content: '定时', kind: 'interval' }] }
+  ])
   storage.saveOfflineTodos('device-a', [
     { id: 'local-1', sessionId: 's1', text: '离线待办', createdAt: 1 }
   ])
@@ -379,6 +446,7 @@ test('解除电脑时一次性清掉待办、离线队列、正文与知识库�
   })
   storage.clearOfflineCache('device-a')
   assert.equal(storage.loadTodosCache('device-a', 's1').length, 0)
+  assert.deepEqual(storage.loadScheduledCache('device-a'), [])
   assert.deepEqual(storage.loadOfflineTodos('device-a'), [])
   assert.equal(storage.loadHistoryCache('device-a', 's1'), null)
   assert.equal(storage.loadKnowledgeCache('device-a', 's1'), null)

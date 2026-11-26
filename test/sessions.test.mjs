@@ -23,18 +23,18 @@ test('项目名称右侧有右对齐的加号，点击在该项目里新建任�
   assert.match(css, /margin-left:\s*auto/)
 })
 
-test('「进行中」后面有「全部待办」入口，弹层按任务汇总待办', () => {
+test('「进行中」后面有「待办」入口，弹层按任务汇总待办', () => {
   const barStart = sessions.indexOf('class="filter-bar"')
   const bar = sessions.slice(barStart, sessions.indexOf('</view>', sessions.indexOf('filter-menu', barStart)))
   const running = bar.indexOf('class="running-toggle"')
   const entry = bar.indexOf('class="todo-entry"')
-  assert.notEqual(entry, -1, '筛选栏缺少全部待办按钮')
-  assert.ok(running >= 0 && entry > running, '全部待办应排在「进行中」后面')
-  assert.ok(bar.includes('@click="openTodoSheet"'), '全部待办没有绑定打开弹层')
-  assert.ok(bar.includes("t('全部待办')"), '全部待办按钮缺少文案')
-  assert.ok(bar.includes('totalTodoCount'), '全部待办按钮没有显示总数')
+  assert.notEqual(entry, -1, '筛选栏缺少待办按钮')
+  assert.ok(running >= 0 && entry > running, '待办应排在「进行中」后面')
+  assert.ok(bar.includes('@click="openTodoSheet"'), '待办没有绑定打开弹层')
+  assert.ok(bar.includes("t('待办')"), '待办按钮缺少文案')
+  assert.ok(bar.includes('totalTodoCount'), '待办按钮没有显示总数')
 
-  assert.ok(sessions.includes(':visible="todoSheetVisible"'), '缺少全部待办弹层')
+  assert.ok(sessions.includes(':visible="todoSheetVisible"'), '缺少待办弹层')
   assert.ok(sessions.includes('class="todo-sheet-list"'), '弹层缺少待办列表')
   assert.ok(sessions.includes("t('共 {v1} 条待办', { v1: total })"), '弹层缺少待办数量')
   assert.ok(sessions.includes('todoSheetSubtitle'), '弹层缺少副标题')
@@ -51,6 +51,37 @@ test('「进行中」后面有「全部待办」入口，弹层按任务汇总�
   assert.notEqual(cssStart, -1, '缺少 .todo-entry 样式')
   const css = sessions.slice(cssStart, sessions.indexOf('}', cssStart))
   assert.match(css, /flex-shrink:\s*0/)
+})
+
+test('顶部四个入口压在同一行，进行中用颜色点而不是勾选框', () => {
+  const barStart = sessions.indexOf('class="filter-bar"')
+  const bar = sessions.slice(barStart, sessions.indexOf('filter-menu', barStart))
+  // 项目筛选 / 进行中 / 待办 / 任务 都在 filter-row 里，否则窄屏会折成两行。
+  assert.ok(bar.includes('class="filter-row"'), '筛选栏缺少单行容器 .filter-row')
+  assert.ok(bar.indexOf('class="filter-trigger"') > bar.indexOf('class="filter-row"'))
+  assert.ok(bar.indexOf('class="todo-entry sched-entry"') > bar.indexOf('class="filter-row"'))
+  assert.ok(bar.includes("t('任务')"), '任务入口缺少文案')
+  assert.ok(!bar.includes("t('全部任务')"), '首页入口应叫「任务」，不再带「全部」')
+  assert.ok(!bar.includes("t('全部待办')"), '首页入口应叫「待办」，不再带「全部」')
+
+  const rowCss = sessions.slice(sessions.indexOf('.filter-row {'), sessions.indexOf('}', sessions.indexOf('.filter-row {')))
+  assert.match(rowCss, /flex-wrap:\s*nowrap/, '单行容器必须 nowrap，否则窄屏仍会折行')
+
+  // 进行中：与电脑端侧栏「执行中」一致的彩色圆点。
+  assert.ok(bar.includes('class="running-dot"'), '进行中缺少颜色点 .running-dot')
+  assert.ok(!bar.includes('running-check'), '旧的勾选框应已删除')
+  const dotCss = sessions.slice(sessions.indexOf('.running-dot {'), sessions.indexOf('}', sessions.indexOf('.running-dot {')))
+  assert.match(dotCss, /border-radius:\s*50%/, '进行中的点应是圆点')
+  assert.ok(
+    sessions.indexOf('.running-dot.live {') > 0 &&
+      /background:\s*var\(--ok\)/.test(
+        sessions.slice(
+          sessions.indexOf('.running-dot.live {'),
+          sessions.indexOf('}', sessions.indexOf('.running-dot.live {'))
+        )
+      ),
+    '有进行中的会话时圆点应变绿'
+  )
 })
 
 test('全部待办读取不打断当前会话的待办面板', () => {

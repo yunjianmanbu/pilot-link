@@ -57,44 +57,76 @@
       </view>
 
       <view v-if="store.sessions.length > 0" class="filter-bar">
-        <view
-          v-if="filters.length > 1"
-          class="filter-trigger"
-          :class="{ open: filterMenuVisible }"
-          @click="toggleFilterMenu"
-        >
-          <text class="filter-trigger-label">{{ currentFilter.name }}</text>
-          <text class="filter-trigger-count">{{ currentFilter.count }}</text>
-          <text class="filter-caret">▾</text>
-        </view>
-
-        <view
-          class="running-toggle"
-          :class="{ active: runningOnly }"
-          @click="toggleRunningOnly"
-        >
-          <view class="running-check" :class="{ checked: runningOnly }">
-            <text v-if="runningOnly" class="running-check-mark">✓</text>
+        <!-- 四个入口压在同一行：项目筛选 / 进行中 / 待办 / 任务。
+             以前宽度不够时会折成两行，「任务」被挤到第二行看着像另一个板块。
+             filter-row 用 nowrap 锁死一行，空间不够时只让项目名省略，
+             其余三个是定宽小块。 -->
+        <view class="filter-row">
+          <view
+            v-if="filters.length > 1"
+            class="filter-trigger"
+            :class="{ open: filterMenuVisible }"
+            @click="toggleFilterMenu"
+          >
+            <text class="filter-trigger-label">{{ currentFilter.name }}</text>
+            <text class="filter-trigger-count">{{ currentFilter.count }}</text>
+            <text class="filter-caret">▾</text>
           </view>
-          <text class="running-toggle-label">{{ t('进行中') }}</text>
-          <text v-if="runningSessionCount > 0" class="running-toggle-count">
-            {{ runningSessionCount }}
-          </text>
+
+          <!-- 进行中：不再用勾选框，改成与电脑端侧栏「执行中」一致的彩色圆点。
+               有正在跑的会话时圆点亮绿（带一圈淡光），数字同时说明有几个；
+               点一下只看这几个，再点一下恢复全部。 -->
+          <view
+            class="running-toggle"
+            :class="{ active: runningOnly }"
+            @click="toggleRunningOnly"
+          >
+            <view
+              class="running-dot"
+              :class="{ live: runningSessionCount > 0, on: runningOnly }"
+            ></view>
+            <text class="running-toggle-label">{{ t('进行中') }}</text>
+            <text v-if="runningSessionCount > 0" class="running-toggle-count">
+              {{ runningSessionCount }}
+            </text>
+          </view>
+
+          <!-- 进行中右侧：汇总所有会话的待办，点开弹层逐条查看。 -->
+          <view class="todo-entry" @click="openTodoSheet">
+            <text class="todo-entry-label">{{ t('待办') }}</text>
+            <text v-if="totalTodoCount > 0" class="todo-entry-count">{{ totalTodoCount }}</text>
+          </view>
+
+          <!-- 定时任务跨会话入口：与「待办」同排同款，常驻显示。
+               点它跳独立页面，不再开弹层：这一排上方的弹层在真机上曾有
+               「点了没反应、连新增文案都不出现」的历史，跳页只做一件事，
+               而任务页一进去就有版本与诊断行，读写成败都有反馈。 -->
+          <!-- 三种事件都绑：真机上「点了完全没反应」时，无法从界面分辨是 click
+               没进来、还是页面没打开。touchend 在 App 端一定到，用位移判断区分
+               「点按」与「滑动」，再由 tap-guard 保证一次手势只跳一层。 -->
+          <view
+            class="todo-entry sched-entry"
+            @touchstart="noteScheduleTouch"
+            @touchend="onScheduleTouchEnd"
+            @click="openSchedulePage"
+          >
+            <text class="todo-entry-label">{{ t('任务') }}</text>
+            <text v-if="scheduledSummary.tasks > 0" class="todo-entry-count">
+              {{ scheduledSummary.tasks }}
+            </text>
+          </view>
         </view>
 
-        <!-- 进行中右侧：汇总所有会话的待办，点开弹层逐条查看。 -->
-        <view class="todo-entry" @click="openTodoSheet">
-          <text class="todo-entry-label">{{ t('全部待办') }}</text>
-          <text v-if="totalTodoCount > 0" class="todo-entry-count">{{ totalTodoCount }}</text>
-        </view>
-
-        <!-- 定时任务跨会话入口：与「全部待办」同排同款，常驻显示。
-             列表行里看不出排了几条定时，这一条不依赖是否已有缓存，点开就现拉。 -->
-        <view class="todo-entry sched-entry" @click="openScheduleSheet">
-          <text class="todo-entry-label">{{ t('全部任务') }}</text>
-          <text v-if="scheduledSummary.tasks > 0" class="todo-entry-count">
-            {{ scheduledSummary.tasks }}
-          </text>
+        <!-- 入口下方常驻一行说明：不管点没点开，这里都有字可看。
+             点了之后会写上下一次点击的回执（时刻 + 走到了哪一步），真机上
+             「没反应」靠这一行就能定案，不必再靠猜发版。 -->
+        <view
+          class="sched-trace"
+          @touchstart="noteScheduleTouch"
+          @touchend="onScheduleTouchEnd"
+          @click="openSchedulePage"
+        >
+          <text class="sched-trace-text">{{ scheduledTraceText }}</text>
         </view>
 
         <view v-if="filterMenuVisible" class="filter-mask" @click="closeFilterMenu"></view>
@@ -366,18 +398,35 @@
         :show-scrollbar="false"
       >
         <view v-if="scheduleSheetLoading" class="todo-sheet-empty">
-          {{ t('正在读取定时任务…') }}
+          {{ scheduleSheetRetrying ? t('正在重新读取定时任务…') : t('正在读取定时任务…') }}
         </view>
         <view v-else-if="scheduleSheetOffline && !scheduleGroups.length" class="todo-sheet-empty">
-          <text class="todo-sheet-empty-text">{{ t('电脑端离线，暂时读不到定时任务') }}</text>
-          <text class="todo-sheet-retry" @click="retryScheduleSheet">{{ t('重新读取') }}</text>
+          <text class="todo-sheet-empty-text">{{ t('手机和电脑没连上，暂时读不到定时任务') }}</text>
+          <text class="todo-sheet-empty-hint">{{ t('先确认手机和电脑都能上网；不在同一网络时，电脑端需要填中继地址才能连。') }}</text>
+          <view class="todo-sheet-actions">
+            <text class="todo-sheet-retry" @click="reconnectScheduleSheet">{{ t('重新连接') }}</text>
+            <text class="todo-sheet-retry" @click="retryScheduleSheet">{{ t('重新读取') }}</text>
+          </view>
+        </view>
+        <view v-else-if="scheduleSheetBusy && !scheduleGroups.length" class="todo-sheet-empty">
+          <text class="todo-sheet-empty-text">{{ t('电脑端同时在处理别的读取，这次没取到定时任务') }}</text>
+          <text class="todo-sheet-empty-hint">{{ t('点「重新读取」再取一次就行。') }}</text>
+          <view class="todo-sheet-actions">
+            <text class="todo-sheet-retry" @click="retryScheduleSheet">{{ t('重新读取') }}</text>
+          </view>
         </view>
         <view v-else-if="scheduleSheetFailed && !scheduleGroups.length" class="todo-sheet-empty">
           <text class="todo-sheet-empty-text">{{ t('电脑端暂时没返回定时任务，稍后再点一次') }}</text>
-          <text class="todo-sheet-retry" @click="retryScheduleSheet">{{ t('重新读取') }}</text>
+          <text class="todo-sheet-empty-hint">{{ t('如果一直这样，先点「重新连接」把链路重建一次。') }}</text>
+          <text v-if="scheduleSheetDiagText" class="todo-sheet-empty-hint">{{ scheduleSheetDiagText }}</text>
+          <view class="todo-sheet-actions">
+            <text class="todo-sheet-retry" @click="reconnectScheduleSheet">{{ t('重新连接') }}</text>
+            <text class="todo-sheet-retry" @click="retryScheduleSheet">{{ t('重新读取') }}</text>
+          </view>
         </view>
         <view v-else-if="!scheduleGroups.length" class="todo-sheet-empty">
           <text class="todo-sheet-empty-text">{{ t('还没有定时任务') }}</text>
+          <text v-if="scheduleSheetDiagText" class="todo-sheet-empty-hint">{{ scheduleSheetDiagText }}</text>
           <text class="todo-sheet-retry" @click="retryScheduleSheet">{{ t('重新读取') }}</text>
         </view>
         <view
@@ -412,6 +461,18 @@
               </view>
             </view>
           </view>
+        </view>
+        <!-- 有内容时也留一行回执：这次是读到了，还是只拿到了上次的缓存。
+             手机上无调试终端，用户截图这一行就能定案，不必再靠猜发版。 -->
+        <view
+          v-if="scheduleGroups.length && scheduleSheetFailed"
+          class="todo-sheet-foot"
+          @click="retryScheduleSheet"
+        >
+          <text class="todo-sheet-empty-hint">{{ t('这次没读到，下面是上次读到的结果；点这里再读一次') }}</text>
+        </view>
+        <view v-if="scheduleGroups.length && scheduleSheetDiagText" class="todo-sheet-foot">
+          <text class="todo-sheet-empty-hint">{{ scheduleSheetDiagText }}</text>
         </view>
       </scroll-view>
     </app-sheet>
@@ -634,7 +695,8 @@ import { projectName, relativeTime } from '../../lib/format.js'
 import { planProgress } from '../../lib/plan.js'
 import {
   buildScheduledGroups,
-  mergeScheduledResult,
+  decideScheduleSheet,
+  scheduleDiagText,
   scheduleKindLabel,
   scheduleTimeText
 } from '../../lib/scheduled-overview.js'
@@ -653,6 +715,7 @@ import {
   createWorkspace,
   deleteSession,
   forkSession,
+  hydrateScheduledCache,
   init,
   loadAllScheduled,
   loadPendingTodosBySession,
@@ -670,6 +733,7 @@ import {
   switchToDevice
 } from '../../store/index.js'
 import { t } from '../../lib/i18n.js'
+import { armTapGuard, tapGuarded } from '../../lib/tap-guard.js'
 import { closeSplash } from '../../lib/splash.js'
 
 export default {
@@ -705,7 +769,14 @@ export default {
       scheduleSheetRows: [],
       scheduleSheetOffline: false,
       scheduleSheetFailed: false,
+      scheduleSheetRetrying: false,
+      scheduleSheetBusy: false,
       scheduleSheetSeq: 0,
+      // 入口点击的回执与触摸起点：真机上「点了没反应」时唯一的定案依据。
+      scheduleTapTrace: '',
+      scheduleTouchStart: null,
+      // 上一次真正触发跳页的时刻：用来分辨「同一次手势的余波」与「用户又点了一下」。
+      scheduleJumpAt: 0,
       updateState: getUpdateDownloadState(),
       updateUnsubscribe: null,
       checkingUpdate: false,
@@ -1015,6 +1086,23 @@ export default {
       for (const group of this.todoSheetGroups) rows += group.items.length + 1
       return `${Math.min(Math.max(rows, 2), 7) * 96}rpx`
     },
+    /**
+     * 入口下方那行常驻说明：有没有定时任务都写清，点过之后附上这一次的回执。
+     *
+     * 开头永远带上当前运行版本（热更后是资源包版本）：真机上「点了没反应」时，
+     * 这一行是唯一不依赖点击就能读到的证据 —— 有没有这行、写着哪个版本，
+     * 一眼就能分清「没热更到新版」和「新版点了仍然不跳」。
+     */
+    scheduledTraceText() {
+      const summary = this.scheduledSummary
+      const base = summary.tasks
+        ? t('定时任务 {v1} 条，{v2} 条启用', { v1: summary.tasks, v2: summary.enabled })
+        : t('还没有定时任务')
+      const head = `${this.versionLabel} · ${base}`
+      return this.scheduleTapTrace
+        ? `${head} · ${this.scheduleTapTrace}`
+        : `${head} · ${t('点上面「任务」看全部')}`
+    },
     /** 首页「全部任务」入口的数量：算上已暂停的任务，与弹层里能看到的条数一致。 */
     scheduledSummary() {
       let tasks = 0
@@ -1037,7 +1125,9 @@ export default {
       }))
     },
     scheduleSheetSubtitle() {
-      if (this.scheduleSheetLoading) return t('正在读取定时任务…')
+      if (this.scheduleSheetLoading) {
+        return this.scheduleSheetRetrying ? t('正在重新读取定时任务…') : t('正在读取定时任务…')
+      }
       const total = this.scheduleGroups.reduce((sum, group) => sum + group.tasks.length, 0)
       // 没读到时不报「0 条」：那会让人以为任务被删了。
       if (!total && (this.scheduleSheetOffline || this.scheduleSheetFailed)) {
@@ -1049,6 +1139,16 @@ export default {
       let rows = 0
       for (const group of this.scheduleGroups) rows += group.tasks.length + 1
       return `${Math.min(Math.max(rows, 2), 8) * 96}rpx`
+    },
+    /**
+     * 空态里的那一行诊断。
+     *
+     * 手机上打不开调试终端，「弹层是空的」有五种成因（离线 / 被抢占 / listAll 超时 /
+     * 电脑端答了但形状不对 / 逐会话一个都没回），界面上长得一模一样。截图里带上
+     * 来源 / 耗时 / 行数，下一次就能一眼定案，不用再靠猜发版。
+     */
+    scheduleSheetDiagText() {
+      return scheduleDiagText(store.scheduledAllDiag)
     },
     currentFilter() {
       if (!this.projectFilter) {
@@ -1085,7 +1185,7 @@ export default {
       return t("还没有会话")
     },
     emptyHint() {
-      if (this.runningOnly) return t("取消勾选「进行中」即可查看全部会话。")
+      if (this.runningOnly) return t("取消「进行中」即可查看全部会话。")
       return t("点击右下角「＋」，选择一个工作目录开始新的对话。")
     },
     sessionRenameDisabled() {
@@ -1212,27 +1312,131 @@ export default {
       this.todoSheetSeq += 1
       if (session) this.open(session)
     },
-    /** 全部任务：与「全部待办」一致，先把手上的缓存铺上，再联网补一次。 */
+    /**
+     * 全部任务：跳独立页面。
+     *
+     * 首页这一排的弹层在真机上出现过「点了完全没反应」——同排的「全部待办」正常，
+     * 说明点击与 app-sheet 都可用，剩下的可疑面全在弹层这一侧（遮罩、动画、
+     * 同页 7 个 app-sheet、高度计算）。跳页把这一整块绕开：点击只做一件事，
+     * 页面自己带版本与诊断行，读不到也有话可看。跳页本身失败时退回弹层，
+     * 不让这一次点击又变成没反应。
+     */
+    /** 点按时刻：HH:mm:ss，写进入口下方那行回执里，真机上一眼可读。 */
+    clockText(date) {
+      const pad = (value) => String(value).padStart(2, '0')
+      return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+    },
+    /** 触摸起点：用来把「点按」和「滑动」分开，滑动抬手不该跳页。 */
+    noteScheduleTouch(event) {
+      const point = event?.touches?.[0] || event?.changedTouches?.[0] || null
+      if (!point) {
+        this.scheduleTouchStart = null
+        return
+      }
+      this.scheduleTouchStart = {
+        x: Number(point.clientX ?? point.pageX ?? 0),
+        y: Number(point.clientY ?? point.pageY ?? 0)
+      }
+    },
+    onScheduleTouchEnd(event) {
+      const start = this.scheduleTouchStart
+      this.scheduleTouchStart = null
+      const point = event?.changedTouches?.[0] || null
+      if (start && point) {
+        const dx = Math.abs(Number(point.clientX ?? point.pageX ?? 0) - start.x)
+        const dy = Math.abs(Number(point.clientY ?? point.pageY ?? 0) - start.y)
+        // 移动超过 24px 算滑动（原先 12px 太紧：真机上拇指点这个 30px 高的入口，
+        // 抬手时抖动十几像素很常见，会被当成滚动静默丢掉，看起来就是「点了没反应」）。
+        if (dx > 24 || dy > 24) {
+          // 即使判定为滑动也要留痕：否则界面上完全没变化，分不清是没点中还是被丢了。
+          this.scheduleTapTrace = t('{v1} 这一下判成了滑动（{v2}px），没跳页', {
+            v1: this.clockText(new Date()),
+            v2: Math.round(Math.max(dx, dy))
+          })
+          return
+        }
+      }
+      this.openSchedulePage()
+    },
+    openSchedulePage() {
+      // App 端 navigateTo 走原生，合成 click 的目标仍是这个入口按钮：
+      // 不拦就会连开两层。H5 下则是落在新页面上，靠新页自己的窗口拦。
+      // 同一个手势会有 touchend 与 click 两次，第二次静默丢弃（不改回执，
+      // 否则「已打开」会被后到的这次覆盖成看起来失败的样子）。
+      if (tapGuarded()) {
+        // 同一次手势的第二次事件（touchend 之后补发的 click）：上一手已经写过
+        // 回执，这里必须静默，否则「正在跳转 / 已打开」会被后到的这一次覆盖成
+        // 「被余波拦下」，看起来像失败。
+        if (Date.now() - this.scheduleJumpAt < 1500) return
+        // 真的被上一手的余波拦下（用户连着点了两下）也要留痕：否则真机上
+        // 看到的仍然是一片静止，分不清事件没进来还是被防穿透窗口吞了。
+        this.scheduleTapTrace = t('{v1} 这一下没跳页：被上一下的余波拦下', {
+          v1: this.clockText(new Date())
+        })
+        return
+      }
+      this.scheduleJumpAt = Date.now()
+      // 抬手后浏览器还会补一次 click：这次点击会落在刚画出来的新页面上。
+      // 开窗口吞掉它，否则新页上同坐标的那一行会被“点”进去。
+      armTapGuard(600)
+      const at = this.clockText(new Date())
+      this.scheduleTapTrace = t('{v1} 点开任务，正在跳转…', { v1: at })
+      uni.navigateTo({
+        url: '/pages/tasks/index',
+        success: () => {
+          this.scheduleTapTrace = t('{v1} 已打开任务页', { v1: at })
+        },
+        fail: (error) => {
+          const reason = String(error?.errMsg || error || '').replace(/^navigateTo:fail\s*/i, '')
+          this.scheduleTapTrace = t('{v1} 跳转失败：{v2}，已退回弹层', {
+            v1: at,
+            v2: reason || 'fail'
+          })
+          void this.openScheduleSheet()
+        }
+      })
+    },
+    /** 全部任务（弹层版）：保留给跳页失败的降级路径。 */
     async openScheduleSheet() {
       this.filterMenuVisible = false
       this.scheduleSheetVisible = true
       // 缓存就是上一次读到的分组：先用它铺满弹层，避免点开后空白一闪（甚至看起来
       // 像「什么都没读到」）。联网结果回来后原地替换。
+      // 与「全部待办」一致：先用本地缓存铺一层，点开立即有内容（冷启动、离线同样如此）。
+      hydrateScheduledCache()
       this.scheduleSheetRows = (store.scheduledAllGroups || []).slice()
       this.scheduleSheetFailed = false
       const seq = ++this.scheduleSheetSeq
       this.scheduleSheetLoading = this.scheduleSheetRows.length === 0
       try {
-        const result = await loadAllScheduled()
+        let result = await loadAllScheduled()
         if (seq !== this.scheduleSheetSeq) return
-        // stale（被后发请求抢占）/ 离线都保留已有列表，不清空。
-        const merged = mergeScheduledResult(result, this.scheduleSheetRows)
-        if (merged.updated) this.scheduleSheetRows = merged.rows
-        this.scheduleSheetOffline = merged.offline
-        this.scheduleSheetFailed = merged.failed === true
+        // 手上一条都没有、而这次又是 stale / 超时（最常见的两种：刚唤醒的链路
+        // 12 秒超时、被首页那次 refreshAll 抢占），自动再读一次。旧版把
+        // scheduledRetryNeeded 写好了却没接进来，于是第一次读空之后弹层既不
+        // 显示失败也没有缓存可铺，再点开还是空的。
+        let decision = decideScheduleSheet(result, this.scheduleSheetRows)
+        if (decision.retry) {
+          this.scheduleSheetLoading = true
+          this.scheduleSheetRetrying = true
+          try {
+            result = await loadAllScheduled()
+          } finally {
+            this.scheduleSheetRetrying = false
+          }
+          if (seq !== this.scheduleSheetSeq) return
+          decision = decideScheduleSheet(result, this.scheduleSheetRows)
+        }
+        // 与「全部待办」一致：每次都写行。stale / 失败时 decideScheduleSheet
+        // 交回的是缓存副本，写它不会把列表清空。
+        this.scheduleSheetRows = decision.rows
+        this.scheduleSheetOffline = decision.offline
+        this.scheduleSheetFailed = decision.failed
+        this.scheduleSheetBusy = decision.busy
       } catch {
         if (seq === this.scheduleSheetSeq) {
           this.scheduleSheetOffline = false
+          this.scheduleSheetBusy = false
           this.scheduleSheetFailed = this.scheduleSheetRows.length === 0
         }
       } finally {
@@ -1244,6 +1448,8 @@ export default {
       this.scheduleSheetRows = []
       this.scheduleSheetOffline = false
       this.scheduleSheetFailed = false
+      this.scheduleSheetRetrying = false
+      this.scheduleSheetBusy = false
       // 作废还在路上的读取，避免关闭后回填旧数据。
       this.scheduleSheetSeq += 1
       this.scheduleSheetLoading = false
@@ -1253,12 +1459,19 @@ export default {
       if (this.scheduleSheetLoading) return
       void this.openScheduleSheet()
     },
+    /** 弹层里直接重连：链路断了时不必先退回首页去点连接状态。 */
+    reconnectScheduleSheet() {
+      reconnectClient()
+      setTimeout(() => this.retryScheduleSheet(), 800)
+    },
     openScheduleSession(group) {
       const session = store.sessions.find((item) => item.id === group?.sessionId)
       this.scheduleSheetVisible = false
       this.scheduleSheetRows = []
       this.scheduleSheetOffline = false
       this.scheduleSheetFailed = false
+      this.scheduleSheetRetrying = false
+      this.scheduleSheetBusy = false
       this.scheduleSheetSeq += 1
       // 会话已被删掉时留在弹层里：那里还能看到任务内容，进去只会是一页空白。
       if (session) this.open(session)
@@ -1845,12 +2058,22 @@ export default {
   row-gap: 12rpx;
   padding: 0 0 16rpx;
 }
+/* 四个入口锁在一行：nowrap 下只允许项目筛选收缩，其余三个是定宽小块。
+   以前整体 wrap，屏幕窄一点「任务」就掉到第二行，看着像另一个板块。 */
+.filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 10rpx;
+  width: 100%;
+  min-width: 0;
+}
 .running-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 10rpx;
+  gap: 8rpx;
   flex-shrink: 0;
-  padding: 12rpx 20rpx;
+  padding: 12rpx 16rpx;
   border-radius: 14rpx;
   background: var(--surface);
   box-shadow: var(--control-shadow);
@@ -1858,46 +2081,56 @@ export default {
 .running-toggle.active {
   background: rgba(152, 183, 158, 0.12);
 }
-.running-check {
-  width: 28rpx;
-  height: 28rpx;
-  border-radius: 8rpx;
-  background: var(--surface-3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
+/* 进行中用颜色点表示，与电脑端侧栏「执行中」的圆点同一种语义：
+   灰点 = 当前没有在跑的会话；绿点（带一圈淡光）= 有。文字只做标注，
+   个数由后面的数字胶囊给出；点中筛选后整块底色转绿。 */
+.running-dot {
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--dim);
 }
-.running-check.checked {
-  background: #98b79e;
+.running-dot.live {
+  background: var(--ok);
+  box-shadow: 0 0 0 4rpx rgba(152, 183, 158, 0.18);
 }
-.running-check-mark {
-  color: #000000;
-  font-size: calc(20rpx * var(--font-scale));
-  line-height: 1;
-  font-weight: 700;
+.running-dot.on {
+  box-shadow: 0 0 0 5rpx rgba(152, 183, 158, 0.28);
 }
 .running-toggle-label {
   color: var(--muted);
-  font-size: calc(24rpx * var(--font-scale));
+  font-size: calc(23rpx * var(--font-scale));
 }
 .running-toggle.active .running-toggle-label {
   color: var(--ok-soft);
 }
 .running-toggle-count {
   color: var(--ok);
-  font-size: calc(20rpx * var(--font-scale));
+  font-size: calc(19rpx * var(--font-scale));
   background: rgba(152, 183, 158, 0.14);
-  padding: 2rpx 10rpx;
+  padding: 2rpx 8rpx;
   border-radius: 20rpx;
 }
-/* 进行中后面的「全部待办」：和筛选、进行中同一排，空间不够时让筛选先收缩。 */
+/* 入口下方那行常驻说明：独占一行，但不能小到看不见。
+   它同时承担「当前运行版本」与「上一次点击的回执」，真机排查全靠这一行，
+   所以字号与对比度按正文的次要级来，而不是灰到看不见的脚注。 */
+.sched-trace {
+  flex: 0 0 100%;
+  padding: 6rpx 4rpx 2rpx;
+}
+.sched-trace-text {
+  color: var(--muted);
+  font-size: calc(24rpx * var(--font-scale));
+  opacity: 0.92;
+}
+/* 进行中后面的「待办」：和筛选、进行中同一排，空间不够时让筛选先收缩。 */
 .todo-entry {
   display: inline-flex;
   align-items: center;
-  gap: 10rpx;
+  gap: 8rpx;
   flex-shrink: 0;
-  padding: 12rpx 20rpx;
+  padding: 12rpx 16rpx;
   border-radius: 14rpx;
   background: var(--surface);
   box-shadow: var(--control-shadow);
@@ -1907,13 +2140,13 @@ export default {
 }
 .todo-entry-label {
   color: var(--muted);
-  font-size: calc(24rpx * var(--font-scale));
+  font-size: calc(23rpx * var(--font-scale));
 }
 .todo-entry-count {
   color: var(--accent-soft);
-  font-size: calc(20rpx * var(--font-scale));
+  font-size: calc(19rpx * var(--font-scale));
   background: var(--bg-soft);
-  padding: 2rpx 10rpx;
+  padding: 2rpx 8rpx;
   border-radius: 20rpx;
 }
 .filter-trigger {
@@ -1921,11 +2154,11 @@ export default {
   z-index: 3;
   display: inline-flex;
   align-items: center;
-  gap: 10rpx;
+  gap: 8rpx;
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
-  padding: 12rpx 22rpx;
+  padding: 12rpx 18rpx;
   border-radius: 14rpx;
   background: var(--surface);
   box-shadow: var(--control-shadow);
@@ -1935,7 +2168,7 @@ export default {
 }
 .filter-trigger-label {
   color: var(--text);
-  font-size: calc(25rpx * var(--font-scale));
+  font-size: calc(23rpx * var(--font-scale));
   flex: 0 1 auto;
   min-width: 0;
   max-width: 420rpx;
@@ -1948,9 +2181,9 @@ export default {
 }
 .filter-trigger-count {
   color: var(--dim);
-  font-size: calc(21rpx * var(--font-scale));
+  font-size: calc(19rpx * var(--font-scale));
   background: var(--bg-soft);
-  padding: 2rpx 10rpx;
+  padding: 2rpx 8rpx;
   border-radius: 20rpx;
 }
 .filter-caret {
@@ -2565,6 +2798,21 @@ export default {
   background: var(--bg-soft);
   color: var(--accent-soft);
   font-size: calc(24rpx * var(--font-scale));
+}
+.todo-sheet-empty-hint {
+  color: var(--dim);
+  font-size: calc(22rpx * var(--font-scale));
+  line-height: 1.5;
+}
+.todo-sheet-foot {
+  display: flex;
+  justify-content: center;
+  padding: 16rpx 0 4rpx;
+}
+.todo-sheet-actions {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
 }
 .todo-sheet-retry:active {
   opacity: 0.7;

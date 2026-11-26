@@ -121,15 +121,31 @@ test('遮罩只在遮罩上按下过才关闭弹层', () => {
 
 test('全部任务与全部分待办走同一条链路', () => {
   const page = read('pages/sessions/index.vue')
-  assert.ok(page.includes('mergeScheduledResult'), '弹层未使用合并结果')
+  // 弹层不能再「只在有新结果时写行」：stale / 超时也要把缓存铺出来、并允许重读一次，
+  // 否则第一次读空之后到哪儿点都是空（同屏「全部待办」无条件写行，所以它一直正常）。
+  assert.ok(page.includes('decideScheduleSheet'), '弹层未使用取数决策')
+  assert.ok(
+    page.includes('this.scheduleSheetRows = decision.rows'),
+    '弹层未把决策结果写进行'
+  )
   assert.ok(
     !page.includes('this.scheduleSheetRows = Array.isArray(result?.groups)'),
     '弹层仍直接覆盖为空列表'
   )
-  // 入口与「全部待办」同排同款且常驻显示：不再靠「有任务才出现」的顶部汇总条。
+  const overview = read('lib/scheduled-overview.js')
   assert.ok(
-    page.includes('class="todo-entry sched-entry" @click="openScheduleSheet"'),
-    '定时任务入口未做成与全部待办同款的按钮'
+    overview.includes('mergeScheduledResult(result, rows)'),
+    '取数决策未复用合并结果'
+  )
+  // 入口与「全部待办」同排同款且常驻显示：不再靠「有任务才出现」的顶部汇总条。
+  // 点击跳的是独立页面（pages/tasks/index）：同排的「全部待办」能弹、
+  // 这一条在真机上点了却毫无反应，说明可疑面全在弹层那一侧，跳页把它整个绕开。
+  assert.ok(
+    page.includes('class="todo-entry sched-entry"') &&
+      page.includes('@click="openSchedulePage"') &&
+      // 入口下方那行常驻说明：读不到时用户至少还有字可看。
+      page.includes('class="sched-trace"'),
+    '定时任务入口未做成与全部待办同款的按钮（或缺常驻说明行）'
   )
   assert.ok(!page.includes('sched-summary'), '旧汇总条未移除，入口重复')
   // 弹层行结构与待办共用同一套 class，改一处两边一起变。
@@ -139,31 +155,57 @@ test('全部任务与全部分待办走同一条链路', () => {
   assert.ok(page.includes("t('共 {v1} 条定时任务'"), '副标题未与「共 N 条待办」对齐')
   const store = read('store/index.js')
   assert.ok(store.includes('SCHEDULED_ALL_STALE'), 'store 未区分「读取作废」')
+  const offlineAt = store.indexOf(
+    'if (!scheduledOnline())',
+    store.indexOf('async function runAllScheduledLoad')
+  )
+  assert.notEqual(offlineAt, -1, 'runAllScheduledLoad 缺少离线分支')
+  const offlineBlock = store.slice(offlineAt, offlineAt + 320)
   assert.ok(
-    /groups: store\.scheduledAllGroups\.slice\(\), offline: true/.test(store),
+    offlineBlock.includes('store.scheduledAllGroups.slice()'),
     '离线时未沿用上一次的分组'
   )
-  // 数据链路：逐会话 schedules.list 是主路径（旧电脑端也支持），listAll 只作补齐。
+  assert.ok(offlineBlock.includes('offline: true'), '离线时未标记 offline')
+  // listAll 答不上来时（电脑端抛错 / 方法没接上）必须退回逐会话读取：这条兜底
+  // 与「全部待办」同路，真机上待办一直是好的，说明这条路是通的。旧版在这里
+  // 直接放弃，弹层就永远是空的。
+  const runStart = store.indexOf('async function runAllScheduledLoad')
+  const runBody = store.slice(runStart, store.indexOf('function countScheduledRows', runStart))
   assert.ok(
-    store.includes("request('schedules.list', { sessionId: session.id })"),
-    '未按会话逐个读取定时任务'
-  )
-  const loadStart = store.indexOf('export async function loadAllScheduled')
-  assert.notEqual(loadStart, -1, '缺少 loadAllScheduled')
-  const loadBody = store.slice(loadStart, store.indexOf('\n}\n', loadStart))
-  assert.ok(
-    loadBody.indexOf('await requestAllScheduledQuietly(token)') >
-      loadBody.indexOf("request('schedules.list', { sessionId: session.id })"),
-    'listAll 排在了逐会话读取之前，旧电脑端仍会读空'
+    runBody.includes('loadAllScheduledBySession(token'),
+    'listAll 没给出分组时未退回逐会话读取'
   )
   assert.ok(
-    store.includes('merged.set(sessionId'),
-    'listAll 的分组没有与逐会话结果合并'
+    !runBody.includes('all.fallback === false'),
+    'listAll 失败时仍直接放弃，弹层会一直是空的'
   )
+  // 电脑端答了 0 组不等于「没有任务」：它可能只是拼不出会话，也必须退回逐会话核对。
+  assert.ok(
+    runBody.includes('if (listAllGroups.length)'),
+    'listAll 只要答了（哪怕 0 组）就收场，会把真机上非空的任务吞成空列表'
+  )
+  assert.ok(
+    !runBody.includes('if (all.supported) {'),
+    'listAll 答了就收场的旧分支又回来了'
+  )
+  // 数据链路：先一次 listAll（新版电脑端一次往返拿全），旧电脑端才退回逐会话读取。
+  // 顺序反了会让会话多的账号一直停在「正在读取定时任务…」，这就是真机上「点开看不到」的成因。
+  assert.ok(
+    store.includes("request('schedules.list', { sessionId: session.id }"),
+    '旧电脑端的逐会话兜底路径丢了'
+  )
+  const loadStart = store.indexOf('async function runAllScheduledLoad')
+  assert.notEqual(loadStart, -1, '缺少 runAllScheduledLoad')
+  const listAllAt = store.indexOf('await requestAllScheduledQuietly(token)', loadStart)
+  const bySessionAt = store.indexOf('loadAllScheduledBySession(token, startedAt,', loadStart)
+  assert.notEqual(listAllAt, -1, 'runAllScheduledLoad 未调用 listAll')
+  assert.notEqual(bySessionAt, -1, '缺少逐会话兜底入口')
+  assert.ok(listAllAt < bySessionAt, 'listAll 排在了逐会话兜底之后，会话多时会一直加载中')
+  assert.ok(store.includes('normalizeScheduledGroups('), 'listAll 的分组未规整')
   const quietStart = store.indexOf('async function requestAllScheduledQuietly')
   assert.notEqual(quietStart, -1, 'listAll 补充分组未封装成可选函数')
   const quiet = store.slice(quietStart, store.indexOf('\n}\n', quietStart))
-  assert.ok(quiet.includes("request('schedules.listAll')"), 'listAll 可选函数没有调用 listAll')
+  assert.ok(quiet.includes("request('schedules.listAll'"), 'listAll 可选函数没有调用 listAll')
   assert.ok(quiet.includes('catch'), 'listAll 失败时未静默降级')
   assert.ok(
     store.includes('if (!answered && !finalGroups.length)'),
